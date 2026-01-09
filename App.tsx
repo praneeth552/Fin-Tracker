@@ -14,7 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import TabNavigator from './src/navigation/TabNavigator';
 import SettingsScreen from './src/screens/Settings';
-import { LoginScreen, SignupScreen } from './src/screens/Auth';
+import { LoginScreen, SignupScreen, ForgotPasswordScreen, OTPVerificationScreen } from './src/screens/Auth';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { AppProvider } from './src/context/AppContext';
 import { themes } from './src/theme';
@@ -112,6 +112,16 @@ const AppContent = () => {
                 <Stack.Screen
                   name="Signup"
                   component={SignupScreen}
+                  options={{ animation: 'slide_from_right' }}
+                />
+                <Stack.Screen
+                  name="ForgotPassword"
+                  component={ForgotPasswordScreen}
+                  options={{ animation: 'slide_from_right' }}
+                />
+                <Stack.Screen
+                  name="OTPVerification"
+                  component={OTPVerificationScreen}
                   options={{ animation: 'slide_from_right' }}
                 />
               </>

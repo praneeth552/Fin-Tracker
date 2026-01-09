@@ -75,12 +75,11 @@ const SignupScreen: React.FC<SignupScreenProps> = ({ navigation }) => {
         setLoading(true);
         try {
             await new Promise<void>(resolve => setTimeout(resolve, 800));
-            await AsyncStorage.setItem('userEmail', email);
-            await AsyncStorage.setItem('userName', name);
-            signIn();
+            // Instead of signing in, go to OTP
+            setLoading(false);
+            navigation.navigate('OTPVerification', { email, mode: 'signup' });
         } catch (error) {
             Alert.alert('Error', 'Signup failed. Please try again.');
-        } finally {
             setLoading(false);
         }
     };

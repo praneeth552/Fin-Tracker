@@ -186,6 +186,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             backgroundColor: bgColor,
                             paddingBottom: insets.bottom + spacing.lg,
                             transform: [{ translateY: slideAnim }],
+                            maxHeight: '90%', // Limit height
                         }
                     ]}
                 >
@@ -199,197 +200,204 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         <View style={{ width: 40 }} />
                     </View>
 
-                    {/* Animated Toggle */}
-                    <View
-                        style={[styles.toggleContainer, { backgroundColor: inputBg }]}
-                        onLayout={(e) => setToggleWidth(e.nativeEvent.layout.width)}
+                    <ScrollView
+                        showsVerticalScrollIndicator={false}
+                        contentContainerStyle={{ paddingBottom: 20 }}
+                        keyboardShouldPersistTaps="handled"
                     >
-                        <Animated.View
-                            style={[
-                                styles.toggleIndicator,
-                                { backgroundColor: accentColor, left: indicatorLeft, width: toggleWidth > 0 ? (toggleWidth / 2) - 6 : '46%' }
-                            ]}
-                        />
-                        <Pressable style={styles.toggleBtn} onPress={() => handleTypeChange('expense')}>
-                            <Icon name="arrow-up" size={16} color={type === 'expense' ? '#FFF' : colors.textMuted} />
-                            <Typography
-                                variant="bodySmall"
-                                weight="semibold"
-                                style={{ color: type === 'expense' ? '#FFF' : colors.textMuted, marginLeft: 4 }}
-                            >
-                                Expense
-                            </Typography>
-                        </Pressable>
-                        <Pressable style={styles.toggleBtn} onPress={() => handleTypeChange('income')}>
-                            <Icon name="arrow-down" size={16} color={type === 'income' ? '#FFF' : colors.textMuted} />
-                            <Typography
-                                variant="bodySmall"
-                                weight="semibold"
-                                style={{ color: type === 'income' ? '#FFF' : colors.textMuted, marginLeft: 4 }}
-                            >
-                                Income
-                            </Typography>
-                        </Pressable>
-                    </View>
+                        {/* Animated Toggle */}
+                        <View
+                            style={[styles.toggleContainer, { backgroundColor: inputBg }]}
+                            onLayout={(e) => setToggleWidth(e.nativeEvent.layout.width)}
+                        >
+                            <Animated.View
+                                style={[
+                                    styles.toggleIndicator,
+                                    { backgroundColor: accentColor, left: indicatorLeft, width: toggleWidth > 0 ? (toggleWidth / 2) - 6 : '46%' }
+                                ]}
+                            />
+                            <Pressable style={styles.toggleBtn} onPress={() => handleTypeChange('expense')}>
+                                <Icon name="arrow-up" size={16} color={type === 'expense' ? '#FFF' : colors.textMuted} />
+                                <Typography
+                                    variant="bodySmall"
+                                    weight="semibold"
+                                    style={{ color: type === 'expense' ? '#FFF' : colors.textMuted, marginLeft: 4 }}
+                                >
+                                    Expense
+                                </Typography>
+                            </Pressable>
+                            <Pressable style={styles.toggleBtn} onPress={() => handleTypeChange('income')}>
+                                <Icon name="arrow-down" size={16} color={type === 'income' ? '#FFF' : colors.textMuted} />
+                                <Typography
+                                    variant="bodySmall"
+                                    weight="semibold"
+                                    style={{ color: type === 'income' ? '#FFF' : colors.textMuted, marginLeft: 4 }}
+                                >
+                                    Income
+                                </Typography>
+                            </Pressable>
+                        </View>
 
-                    {/* Amount Input */}
-                    <View style={styles.amountSection}>
-                        <View style={styles.amountRow}>
-                            <Typography variant="3xl" weight="bold" style={{ color: accentColor }}>₹</Typography>
+                        {/* Amount Input */}
+                        <View style={styles.amountSection}>
+                            <View style={styles.amountRow}>
+                                <Typography variant="3xl" weight="bold" style={{ color: accentColor }}>₹</Typography>
+                                <TextInput
+                                    style={[styles.amountInput, { color: colors.text, textAlign: 'center' }]}
+                                    value={amount}
+                                    onChangeText={setAmount}
+                                    placeholder="0"
+                                    placeholderTextColor={colors.textMuted}
+                                    keyboardType="decimal-pad"
+                                // autoFocus // Removed to prevent jumpy layout
+                                />
+                            </View>
+                            <View style={[styles.amountLine, { backgroundColor: accentColor }]} />
+                        </View>
+
+                        {/* Description */}
+                        <View style={styles.inputGroup}>
                             <TextInput
-                                style={[styles.amountInput, { color: colors.text }]}
-                                value={amount}
-                                onChangeText={setAmount}
-                                placeholder="0"
+                                style={[styles.textInput, { backgroundColor: inputBg, color: colors.text }]}
+                                value={description}
+                                onChangeText={setDescription}
+                                placeholder="What's this for?"
                                 placeholderTextColor={colors.textMuted}
-                                keyboardType="decimal-pad"
-                                autoFocus
                             />
                         </View>
-                        <View style={[styles.amountLine, { backgroundColor: accentColor }]} />
-                    </View>
 
-                    {/* Description */}
-                    <View style={styles.inputGroup}>
-                        <TextInput
-                            style={[styles.textInput, { backgroundColor: inputBg, color: colors.text }]}
-                            value={description}
-                            onChangeText={setDescription}
-                            placeholder="What's this for?"
-                            placeholderTextColor={colors.textMuted}
-                        />
-                    </View>
-
-                    {/* Category Selection - Animated height for smooth toggle */}
-                    <Animated.View
-                        style={[
-                            styles.categoriesSection,
-                            { height: categoryHeight, opacity: categoryOpacity, overflow: 'hidden' }
-                        ]}
-                        pointerEvents={type === 'expense' ? 'auto' : 'none'}
-                    >
-                        <ScrollView
-                            horizontal
-                            showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={styles.categoriesScroll}
+                        {/* Category Selection - Animated height for smooth toggle */}
+                        <Animated.View
+                            style={[
+                                styles.categoriesSection,
+                                { height: categoryHeight, opacity: categoryOpacity, overflow: 'hidden' }
+                            ]}
+                            pointerEvents={type === 'expense' ? 'auto' : 'none'}
                         >
-                            {allCategories.map((cat) => {
-                                const isSelected = selectedCategory === cat.key;
-                                return (
-                                    <Pressable
-                                        key={cat.key}
-                                        onPress={() => setSelectedCategory(cat.key)}
-                                        style={[
-                                            styles.categoryChip,
-                                            {
-                                                backgroundColor: isSelected ? cat.color : inputBg,
-                                                borderColor: isSelected ? cat.color : 'transparent',
-                                            }
-                                        ]}
-                                    >
-                                        <Typography variant="body">{cat.icon}</Typography>
-                                    </Pressable>
-                                );
-                            })}
-                            {/* Add Category Button */}
-                            <Pressable
-                                onPress={() => setShowAddCategory(true)}
-                                style={[styles.categoryChip, styles.addCategoryBtn, { borderColor: colors.border }]}
+                            <ScrollView
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                contentContainerStyle={styles.categoriesScroll}
                             >
-                                <Icon name="plus" size={20} color={colors.textMuted} />
-                            </Pressable>
-                        </ScrollView>
-                    </Animated.View>
-
-                    {/* Add Category Modal */}
-                    <AddCategoryModal
-                        visible={showAddCategory}
-                        onClose={() => setShowAddCategory(false)}
-                        onAdd={(cat) => setSelectedCategory(cat.key)}
-                    />
-
-                    {/* Vendor/Merchant - For Expense */}
-                    <Animated.View
-                        style={[styles.inputGroup, { height: categoryHeight, opacity: categoryOpacity, overflow: 'hidden' }]}
-                        pointerEvents={type === 'expense' ? 'auto' : 'none'}
-                    >
-                        <TextInput
-                            style={[styles.textInput, { backgroundColor: inputBg, color: colors.text }]}
-                            value={vendor}
-                            onChangeText={setVendor}
-                            placeholder="Vendor/Merchant (e.g., Swiggy)"
-                            placeholderTextColor={colors.textMuted}
-                        />
-                    </Animated.View>
-
-                    {/* Payment Method */}
-                    <View style={styles.inputGroup}>
-                        <Typography variant="caption" color="secondary" style={{ marginBottom: 8 }}>Payment Method</Typography>
-                        <View style={styles.paymentRow}>
-                            {(['cash', 'upi', 'card', 'netbanking'] as const).map((pm) => (
-                                <Pressable
-                                    key={pm}
-                                    style={[
-                                        styles.paymentChip,
-                                        { backgroundColor: paymentMethod === pm ? (pm === 'cash' ? '#22C55E' : pm === 'upi' ? '#3B82F6' : pm === 'card' ? '#8B5CF6' : '#F59E0B') : inputBg }
-                                    ]}
-                                    onPress={() => setPaymentMethod(pm)}
-                                >
-                                    <Typography variant="caption" weight={paymentMethod === pm ? 'semibold' : 'regular'} style={{ color: paymentMethod === pm ? '#FFF' : colors.text }}>
-                                        {pm === 'netbanking' ? 'Bank' : pm.toUpperCase()}
-                                    </Typography>
-                                </Pressable>
-                            ))}
-                        </View>
-                    </View>
-
-                    {/* Account Selector */}
-                    <View style={styles.inputGroup}>
-                        <CustomDropdown
-                            label="From Account"
-                            placeholder="Select Account"
-                            options={bankAccounts.map(acc => ({
-                                label: acc.name,
-                                value: acc.id,
-                                icon: acc.icon,
-                                subtitle: `₹${acc.balance.toLocaleString()}`
-                            }))}
-                            value={selectedAccount}
-                            onChange={setSelectedAccount}
-                        />
-                    </View>
-
-                    {/* Date */}
-                    <View style={styles.inputGroup}>
-                        <Typography variant="caption" color="secondary" style={{ marginBottom: 8 }}>Date</Typography>
-                        <Pressable
-                            style={[styles.textInput, { backgroundColor: inputBg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]}
-                            onPress={() => setShowDatePicker(true)}
-                        >
-                            <Icon name="calendar" size={20} color={colors.textMuted} style={{ marginRight: 8 }} />
-                            <Typography variant="body" weight="medium" style={{ color: colors.text }}>
-                                {transactionDate.toLocaleDateString('default', {
-                                    day: 'numeric',
-                                    month: 'long',
-                                    year: 'numeric'
+                                {allCategories.map((cat) => {
+                                    const isSelected = selectedCategory === cat.key;
+                                    return (
+                                        <Pressable
+                                            key={cat.key}
+                                            onPress={() => setSelectedCategory(cat.key)}
+                                            style={[
+                                                styles.categoryChip,
+                                                {
+                                                    backgroundColor: isSelected ? cat.color : inputBg,
+                                                    borderColor: isSelected ? cat.color : 'transparent',
+                                                }
+                                            ]}
+                                        >
+                                            <Typography variant="body">{cat.icon}</Typography>
+                                        </Pressable>
+                                    );
                                 })}
+                                {/* Add Category Button */}
+                                <Pressable
+                                    onPress={() => setShowAddCategory(true)}
+                                    style={[styles.categoryChip, styles.addCategoryBtn, { borderColor: colors.border }]}
+                                >
+                                    <Icon name="plus" size={20} color={colors.textMuted} />
+                                </Pressable>
+                            </ScrollView>
+                        </Animated.View>
+
+                        {/* Add Category Modal */}
+                        <AddCategoryModal
+                            visible={showAddCategory}
+                            onClose={() => setShowAddCategory(false)}
+                            onAdd={(cat) => setSelectedCategory(cat.key)}
+                        />
+
+                        {/* Vendor/Merchant - For Expense */}
+                        <Animated.View
+                            style={[styles.inputGroup, { height: categoryHeight, opacity: categoryOpacity, overflow: 'hidden' }]}
+                            pointerEvents={type === 'expense' ? 'auto' : 'none'}
+                        >
+                            <TextInput
+                                style={[styles.textInput, { backgroundColor: inputBg, color: colors.text }]}
+                                value={vendor}
+                                onChangeText={setVendor}
+                                placeholder="Vendor/Merchant (e.g., Swiggy)"
+                                placeholderTextColor={colors.textMuted}
+                            />
+                        </Animated.View>
+
+                        {/* Payment Method */}
+                        <View style={styles.inputGroup}>
+                            <Typography variant="caption" color="secondary" style={{ marginBottom: 8 }}>Payment Method</Typography>
+                            <View style={styles.paymentRow}>
+                                {(['cash', 'upi', 'card', 'netbanking'] as const).map((pm) => (
+                                    <Pressable
+                                        key={pm}
+                                        style={[
+                                            styles.paymentChip,
+                                            { backgroundColor: paymentMethod === pm ? (pm === 'cash' ? '#22C55E' : pm === 'upi' ? '#3B82F6' : pm === 'card' ? '#8B5CF6' : '#F59E0B') : inputBg }
+                                        ]}
+                                        onPress={() => setPaymentMethod(pm)}
+                                    >
+                                        <Typography variant="caption" weight={paymentMethod === pm ? 'semibold' : 'regular'} style={{ color: paymentMethod === pm ? '#FFF' : colors.text }}>
+                                            {pm === 'netbanking' ? 'Bank' : pm.toUpperCase()}
+                                        </Typography>
+                                    </Pressable>
+                                ))}
+                            </View>
+                        </View>
+
+                        {/* Account Selector */}
+                        <View style={styles.inputGroup}>
+                            <CustomDropdown
+                                label="From Account"
+                                placeholder="Select Account"
+                                options={bankAccounts.map(acc => ({
+                                    label: acc.name,
+                                    value: acc.id,
+                                    icon: acc.icon,
+                                    subtitle: `₹${acc.balance.toLocaleString()}`
+                                }))}
+                                value={selectedAccount}
+                                onChange={setSelectedAccount}
+                            />
+                        </View>
+
+                        {/* Date */}
+                        <View style={styles.inputGroup}>
+                            <Typography variant="caption" color="secondary" style={{ marginBottom: 8 }}>Date</Typography>
+                            <Pressable
+                                style={[styles.textInput, { backgroundColor: inputBg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]}
+                                onPress={() => setShowDatePicker(true)}
+                            >
+                                <Icon name="calendar" size={20} color={colors.textMuted} style={{ marginRight: 8 }} />
+                                <Typography variant="body" weight="medium" style={{ color: colors.text }}>
+                                    {transactionDate.toLocaleDateString('default', {
+                                        day: 'numeric',
+                                        month: 'long',
+                                        year: 'numeric'
+                                    })}
+                                </Typography>
+                            </Pressable>
+                        </View>
+
+                        {/* Submit Button */}
+                        <Pressable
+                            style={({ pressed }) => [
+                                styles.submitBtn,
+                                { backgroundColor: accentColor, opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }
+                            ]}
+                            onPress={handleSubmit}
+                        >
+                            <Typography variant="body" weight="semibold" style={{ color: '#FFF' }}>
+                                Add {type === 'expense' ? 'Expense' : 'Income'}
                             </Typography>
                         </Pressable>
-                    </View>
-
-                    {/* Submit Button */}
-                    <Pressable
-                        style={({ pressed }) => [
-                            styles.submitBtn,
-                            { backgroundColor: accentColor, opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }
-                        ]}
-                        onPress={handleSubmit}
-                    >
-                        <Typography variant="body" weight="semibold" style={{ color: '#FFF' }}>
-                            Add {type === 'expense' ? 'Expense' : 'Income'}
-                        </Typography>
-                    </Pressable>
+                    </ScrollView>
                 </Animated.View>
+
             </KeyboardAvoidingView>
 
             <CustomDatePicker

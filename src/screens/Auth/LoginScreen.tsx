@@ -187,8 +187,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
                                 </View>
                             </View>
 
-                            {/* Forgot Password */}
-                            <Pressable style={styles.forgotBtn}>
+                            <Pressable style={styles.forgotBtn} onPress={() => navigation.navigate('ForgotPassword')}>
                                 <Typography variant="bodySmall" style={{ color: colors.accent }}>
                                     Forgot password?
                                 </Typography>
