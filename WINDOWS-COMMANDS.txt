@@ -59,11 +59,34 @@ docker-compose exec backend /bin/bash
 
 INSTALLING APK ON YOUR PHONE
 -----------------------------
-1. Connect phone via USB
-2. Enable USB debugging on phone
-3. Install ADB: choco install adb
-4. Run: adb devices
-5. Run: adb install android\app\build\outputs\apk\debug\app-debug.apk
+1. Enable USB debugging on phone:
+   - Settings → About Phone → Tap "Build Number" 7 times
+   - Settings → Developer Options → Enable "USB Debugging"
+
+2. Install ADB (choose one method):
+   
+   Method A - Chocolatey (easiest):
+   choco install adb
+   
+   Method B - Download Platform Tools:
+   Download from: https://developer.android.com/tools/releases/platform-tools
+   Extract to C:\platform-tools
+   
+3. Add ADB to PATH (if not using Chocolatey):
+   - Right-click "This PC" → Properties
+   - Advanced System Settings → Environment Variables
+   - Under "System Variables", find "Path" → Edit → New
+   - Add: C:\Users\YourName\AppData\Local\Android\Sdk\platform-tools
+   - Or: C:\platform-tools
+   - Click OK, restart PowerShell
+
+4. Connect phone via USB
+
+5. Verify ADB works:
+   adb devices
+   
+6. Install the APK:
+   adb install android\app\build\outputs\apk\debug\app-debug.apk
 
 
 TROUBLESHOOTING
@@ -71,8 +94,21 @@ TROUBLESHOOTING
 Problem: "docker-compose not recognized"
 Solution: Make sure Docker Desktop is running
 
+Problem: "adb is not recognized"
+Solution: 
+  1. Make sure ADB is installed (see INSTALLING APK section)
+  2. Add to PATH and restart PowerShell
+  3. Test with: adb version
+
 Problem: Port already in use
 Solution: Stop other apps on port 8080/8081
+
+Problem: Android SDK API 36 download fails
+Solution: 
+  Edit Dockerfile.frontend, change:
+  "platforms;android-36" to "platforms;android-35"
+  "build-tools;36.0.0" to "build-tools;35.0.0"
+  Then rebuild: docker-compose build --no-cache frontend
 
 Problem: Need to rebuild
 Solution: 

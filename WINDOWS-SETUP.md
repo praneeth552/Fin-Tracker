@@ -127,19 +127,55 @@ Or open in browser: http://localhost:8080/api/health
    - Settings → Developer Options → Enable "USB Debugging"
 
 2. **Install ADB on Windows**:
+   
+   **Method A: Using Chocolatey (Easiest)**
    ```powershell
    choco install adb
    ```
-   Or download: https://developer.android.com/tools/releases/platform-tools
+   
+   **Method B: Using Android Studio**
+   - Install Android Studio: https://developer.android.com/studio
+   - ADB will be at: `C:\Users\YourName\AppData\Local\Android\Sdk\platform-tools`
+   
+   **Method C: Download Platform Tools**
+   - Download: https://developer.android.com/tools/releases/platform-tools
+   - Extract to `C:\platform-tools`
 
-3. **Connect phone via USB**
+3. **Add ADB to PATH** (if not using Chocolatey):
+   
+   **GUI Method**:
+   - Right-click "This PC" → Properties
+   - Advanced System Settings → Environment Variables
+   - Under "System Variables", find "Path" and click Edit
+   - Click New and add: `C:\Users\YourName\AppData\Local\Android\Sdk\platform-tools`
+   - Or if you downloaded platform tools: `C:\platform-tools`
+   - Click OK on all dialogs
+   - **Restart PowerShell/CMD**
+   
+   **PowerShell Method** (Run as Administrator):
+   ```powershell
+   # For Android Studio installation
+   $path = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+   $newPath = $path + ';C:\Users\' + $env:USERNAME + '\AppData\Local\Android\Sdk\platform-tools'
+   [Environment]::SetEnvironmentVariable('Path', $newPath, 'Machine')
+   
+   # OR for manual platform-tools download
+   $path = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+   $newPath = $path + ';C:\platform-tools'
+   [Environment]::SetEnvironmentVariable('Path', $newPath, 'Machine')
+   ```
+   Then restart your terminal.
 
-4. **Verify connection**:
+4. **Connect phone via USB**
+
+5. **Verify connection**:
    ```powershell
    adb devices
    ```
+   
+   If you see "adb is not recognized", restart your terminal after adding to PATH.
 
-5. **Install the APK**:
+6. **Install the APK**:
    ```powershell
    adb install android\app\build\outputs\apk\debug\app-debug.apk
    ```
@@ -210,6 +246,80 @@ git config --global core.autocrlf input
 cd FinTrackerApp
 git rm --cached -r .
 git reset --hard
+```
+
+### Issue 7: ADB not found / "adb is not recognized"
+
+**Solution**:
+1. Make sure you've installed ADB (see "Option 1: Physical Android Device" section above)
+2. If installed via Chocolatey, close and reopen PowerShell
+3. If installed via Android Studio, add to PATH (see instructions above)
+4. Verify installation:
+   ```powershell
+   adb version
+   ```
+
+### Issue 8: Android SDK API 36 download issues in Docker
+
+**Symptoms**: Frontend container fails to build with errors like:
+- "Failed to install the following Android SDK packages"
+- "Could not find or load main class com.android.sdklib.tool.sdkmanager.SdkManagerCli"
+- "Package 'platforms;android-36' is not available"
+
+**Solution A - Use API 35 (Stable Alternative)**:
+
+If API 36 has issues, edit `Dockerfile.frontend` and change:
+```dockerfile
+# Change this line:
+RUN ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager \
+    "platform-tools" \
+    "platforms;android-36" \
+    "build-tools;36.0.0" \
+    "ndk;27.1.12297006" \
+    "system-images;android-36;google_apis;x86_64"
+
+# To this:
+RUN ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager \
+    "platform-tools" \
+    "platforms;android-35" \
+    "build-tools;35.0.0" \
+    "ndk;27.1.12297006" \
+    "system-images;android-35;google_apis;x86_64"
+```
+
+Also update `android/build.gradle`:
+```gradle
+ext {
+    buildToolsVersion = "35.0.0"
+    minSdkVersion = 24
+    compileSdkVersion = 35  // Changed from 36
+    targetSdkVersion = 35   // Changed from 36
+    ndkVersion = "27.1.12297006"
+    kotlinVersion = "2.1.20"
+}
+```
+
+Then rebuild:
+```powershell
+docker-compose down
+docker-compose build --no-cache frontend
+docker-compose up -d
+```
+
+**Solution B - Wait for Network/Retry**:
+
+Sometimes it's just a network timeout:
+```powershell
+# Rebuild with better network
+docker-compose build --no-cache frontend
+```
+
+**Solution C - Check Available Versions**:
+
+Enter the container and check what's available:
+```powershell
+docker-compose run frontend bash
+${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --list
 ```
 
 ---
