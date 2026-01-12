@@ -1,10 +1,114 @@
 # FinTracker App
 
-This is the React Native frontend for the FinTracker application.
+A React Native mobile app for tracking finances with a Spring Boot backend.
 
-## 🚀 Getting Started for Contributors
+## 🐳 Quick Start with Docker (Recommended)
 
-If you are a backend developer or new contributor, follow these steps to get the app running locally.
+**No version conflicts! Docker handles everything.**
+
+### Prerequisites
+
+-   **Docker Desktop**: [Download here](https://www.docker.com/products/docker-desktop)
+-   **Git**: For cloning the repository
+-   **Physical Android device** OR **Android emulator on your host machine** (Docker can't run emulators)
+
+### Setup in 3 Steps
+
+1. **Clone and navigate to the project**:
+```bash
+git clone <YOUR_REPO_URL>
+cd FinTrackerApp
+```
+
+2. **Start everything with one command**:
+```bash
+make up
+# OR if you don't have make installed:
+docker-compose up -d
+```
+
+3. **View logs to confirm everything is running**:
+```bash
+make logs
+# OR:
+docker-compose logs -f
+```
+
+That's it! 🎉
+
+-   **Frontend (Metro)**: http://localhost:8081
+-   **Backend API**: http://localhost:8080
+
+### Common Docker Commands
+
+```bash
+make help              # Show all available commands
+make up                # Start all services
+make down              # Stop all services
+make logs              # View logs from all services
+make shell-frontend    # Open terminal in frontend container
+make shell-backend     # Open terminal in backend container
+make build-apk         # Build Android debug APK
+make status            # Show container status
+```
+
+### Connecting Your Android Device
+
+**Option 1: Physical Device**
+
+1. Enable USB debugging on your device
+2. Connect via USB
+3. Run on your host machine (NOT in Docker):
+```bash
+adb devices
+adb install android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+**Option 2: Emulator on Host**
+
+1. Run Android emulator on your host machine
+2. Build APK in Docker: `make build-apk`
+3. Install from host: `adb install android/app/build/outputs/apk/debug/app-debug.apk`
+
+### What Docker Manages for You
+
+✅ **Java/JDK 17** (No need to install)<br>
+✅ **Android SDK API 36 + Build Tools 36.0.0** (Automatically configured)<br>
+✅ **Node.js 20** (Exact version from package.json)<br>
+✅ **Gradle** (React Native's wrapper)<br>
+✅ **All environment variables** (ANDROID_HOME, JAVA_HOME, etc.)<br>
+✅ **Spring Boot backend** (Port 8080)<br>
+
+### Troubleshooting Docker Setup
+
+**Metro bundler not accessible?**
+```bash
+# Restart frontend service
+docker-compose restart frontend
+```
+
+**Backend not responding?**
+```bash
+# Check backend health
+docker-compose exec backend curl http://localhost:8080/actuator/health
+```
+
+**Need to rebuild after dependency changes?**
+```bash
+make build
+# OR:
+docker-compose build --no-cache
+```
+
+**Want to start fresh?**
+```bash
+make clean-docker  # Removes all containers and images
+make up            # Start again
+```
+
+---
+
+## 🛠 Alternative: Manual Setup (Without Docker)
 
 ### 1. Prerequisites
 

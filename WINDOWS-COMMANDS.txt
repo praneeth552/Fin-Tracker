@@ -1,0 +1,92 @@
+====================================
+FINTRACKERAPP - WINDOWS QUICK COMMANDS
+====================================
+
+FOR TEAM MEMBERS WHO ALREADY HAVE THE REPO CLONED
+--------------------------------------------------
+
+STEP 1: UPDATE YOUR CODE
+------------------------
+cd FinTrackerApp
+git pull origin main
+
+
+STEP 2: START DOCKER DESKTOP
+-----------------------------
+- Click Start menu
+- Search "Docker Desktop"
+- Open it and wait for it to start completely
+- Look for whale icon in system tray (bottom right)
+
+
+STEP 3: START THE APP
+---------------------
+(in PowerShell or Command Prompt, inside FinTrackerApp folder)
+
+docker-compose up -d
+
+
+STEP 4: CHECK IF RUNNING
+------------------------
+docker-compose ps
+
+You should see both "frontend" and "backend" with status "Up"
+
+
+DAILY COMMANDS
+--------------
+Start everything:
+docker-compose up -d
+
+Stop everything:
+docker-compose down
+
+View logs:
+docker-compose logs -f
+
+Check status:
+docker-compose ps
+
+Build APK:
+docker-compose exec frontend bash -c "cd android && ./gradlew assembleDebug"
+
+Enter frontend container:
+docker-compose exec frontend /bin/bash
+
+Enter backend container:
+docker-compose exec backend /bin/bash
+
+
+INSTALLING APK ON YOUR PHONE
+-----------------------------
+1. Connect phone via USB
+2. Enable USB debugging on phone
+3. Install ADB: choco install adb
+4. Run: adb devices
+5. Run: adb install android\app\build\outputs\apk\debug\app-debug.apk
+
+
+TROUBLESHOOTING
+---------------
+Problem: "docker-compose not recognized"
+Solution: Make sure Docker Desktop is running
+
+Problem: Port already in use
+Solution: Stop other apps on port 8080/8081
+
+Problem: Need to rebuild
+Solution: 
+  docker-compose down -v --rmi all
+  docker-compose build --no-cache
+  docker-compose up -d
+
+
+ACCESSING SERVICES
+------------------
+Backend API: http://localhost:8080/api/health
+Metro Bundler: http://localhost:8081
+
+
+FULL GUIDE
+----------
+See WINDOWS-SETUP.md for detailed instructions
