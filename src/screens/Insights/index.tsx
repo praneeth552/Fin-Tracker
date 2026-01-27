@@ -4,18 +4,28 @@
  * Animated stats and tip cards using built-in Animated
  */
 
-import React, { useRef, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, useColorScheme, Animated } from 'react-native';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { View, StyleSheet, ScrollView, useColorScheme, Animated, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography, AnimatedCard } from '../../components/common';
 import { themes, spacing, borderRadius } from '../../theme';
 import { springConfigs } from '../../theme/motion';
+import { useApp } from '../../context/AppContext';
 
 const InsightsScreen: React.FC = () => {
     const insets = useSafeAreaInsets();
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const colors = isDark ? themes.dark : themes.light;
+    const { refreshData } = useApp();
+
+    const [refreshing, setRefreshing] = useState(false);
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        await refreshData();
+        setRefreshing(false);
+    }, [refreshData]);
 
     const tips = [
         { title: 'Weekend Spending', desc: 'You spend 40% more on weekends. Try setting a weekend limit.', icon: '📅' },
@@ -57,6 +67,14 @@ const InsightsScreen: React.FC = () => {
             <ScrollView
                 contentContainerStyle={[styles.content, { paddingBottom: 120 + insets.bottom }]}
                 showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor={colors.primary}
+                        colors={[colors.primary]}
+                    />
+                }
             >
                 {/* Stats Row */}
                 <Animated.View style={[styles.statsRow, { opacity: statsOpacity, transform: [{ translateY: statsTranslateY }] }]}>

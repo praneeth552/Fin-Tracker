@@ -1,10 +1,10 @@
 /**
  * Accounts Screen - Manage Bank Accounts
  * ========================================
- * List of accounts with balances and add/edit functionality
+ * List of accounts with balances, add/edit, and transaction statement view
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
     View,
     StyleSheet,
@@ -14,11 +14,14 @@ import {
     TextInput,
     useColorScheme,
     Dimensions,
+    Alert,
+    ScrollView,
+    RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import LinearGradient from 'react-native-linear-gradient';
-import { useApp, BankAccount } from '../../context/AppContext';
+import { useApp, BankAccount, Transaction } from '../../context/AppContext';
 import { Typography } from '../../components/common';
 import { themes, spacing } from '../../theme';
 
@@ -34,7 +37,7 @@ const ACCOUNTS_GRADIENTS = {
 interface AddAccountModalProps {
     visible: boolean;
     onClose: () => void;
-    onAdd: (account: Omit<BankAccount, 'id'>) => void;
+    onAdd: (account: Omit<BankAccount, 'id'>) => Promise<boolean>;
 }
 
 const AddAccountModal: React.FC<AddAccountModalProps> = ({ visible, onClose, onAdd }) => {
@@ -46,18 +49,23 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({ visible, onClose, onA
     const [balance, setBalance] = useState('');
     const [type, setType] = useState<BankAccount['type']>('bank');
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (name && balance) {
-            onAdd({
+            const success = await onAdd({
                 name,
                 balance: parseFloat(balance),
                 type,
                 icon: type === 'cash' ? '💵' : type === 'card' ? '💳' : type === 'wallet' ? '📱' : '🏦',
             });
-            setName('');
-            setBalance('');
-            setType('bank');
-            onClose();
+
+            if (success) {
+                setName('');
+                setBalance('');
+                setType('bank');
+                onClose();
+            } else {
+                Alert.alert("Error", "Failed to add account. Please try again.");
+            }
         }
     };
 
@@ -137,22 +145,170 @@ const AddAccountModal: React.FC<AddAccountModalProps> = ({ visible, onClose, onA
     );
 };
 
+// Account Statement Modal - Shows transactions for a specific account
+interface AccountStatementModalProps {
+    visible: boolean;
+    onClose: () => void;
+    account: BankAccount | null;
+    transactions: Transaction[];
+}
+
+const AccountStatementModal: React.FC<AccountStatementModalProps> = ({ visible, onClose, account, transactions }) => {
+    const colorScheme = useColorScheme();
+    const isDark = colorScheme === 'dark';
+    const colors = isDark ? themes.dark : themes.light;
+    const insets = useSafeAreaInsets();
+
+    if (!account) return null;
+
+    // Filter transactions for this account
+    const accountTransactions = transactions.filter(t => t.accountId === account.id);
+
+    // Calculate totals
+    const totalIncome = accountTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+    const totalExpenses = accountTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+
+    const bgColor = isDark ? colors.card : '#FFFFFF';
+    const gradient = ACCOUNTS_GRADIENTS[account.type] || ACCOUNTS_GRADIENTS.bank;
+
+    return (
+        <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+            <View style={[styles.statementContainer, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+                {/* Header */}
+                <LinearGradient colors={gradient} style={styles.statementHeader}>
+                    <View style={styles.statementHeaderTop}>
+                        <Pressable onPress={onClose} style={styles.backBtn}>
+                            <Icon name="arrow-left" size={24} color="#FFF" />
+                        </Pressable>
+                        <Typography variant="body" weight="semibold" style={{ color: '#FFF' }}>
+                            Account Statement
+                        </Typography>
+                        <View style={{ width: 40 }} />
+                    </View>
+                    <View style={styles.statementAccountInfo}>
+                        <Icon
+                            name={account.type === 'cash' ? 'cash' : account.type === 'card' ? 'credit-card' : account.type === 'wallet' ? 'wallet' : 'bank'}
+                            size={32}
+                            color="#FFF"
+                        />
+                        <Typography variant="lg" weight="semibold" style={{ color: '#FFF', marginTop: spacing.sm }}>
+                            {account.name}
+                        </Typography>
+                        <Typography variant="h2" weight="bold" style={{ color: '#FFF', marginTop: 4 }}>
+                            ₹{account.balance.toLocaleString()}
+                        </Typography>
+                    </View>
+                    <View style={styles.statementSummary}>
+                        <View style={styles.statementSummaryItem}>
+                            <Icon name="arrow-down" size={16} color="#22C55E" />
+                            <Typography variant="caption" style={{ color: 'rgba(255,255,255,0.8)', marginLeft: 4 }}>Income</Typography>
+                            <Typography variant="body" weight="semibold" style={{ color: '#FFF', marginLeft: 6 }}>₹{totalIncome.toLocaleString()}</Typography>
+                        </View>
+                        <View style={styles.statementSummaryItem}>
+                            <Icon name="arrow-up" size={16} color="#EF4444" />
+                            <Typography variant="caption" style={{ color: 'rgba(255,255,255,0.8)', marginLeft: 4 }}>Expenses</Typography>
+                            <Typography variant="body" weight="semibold" style={{ color: '#FFF', marginLeft: 6 }}>₹{totalExpenses.toLocaleString()}</Typography>
+                        </View>
+                    </View>
+                </LinearGradient>
+
+                {/* Transactions List */}
+                <View style={{ flex: 1, padding: spacing.lg }}>
+                    <Typography variant="caption" color="secondary" style={{ marginBottom: spacing.sm }}>
+                        {accountTransactions.length} TRANSACTION{accountTransactions.length !== 1 ? 'S' : ''}
+                    </Typography>
+
+                    {accountTransactions.length === 0 ? (
+                        <View style={styles.emptyState}>
+                            <Icon name="receipt" size={48} color={colors.textMuted} />
+                            <Typography variant="body" color="secondary" style={{ marginTop: spacing.md, textAlign: 'center' }}>
+                                No transactions for this account yet.
+                            </Typography>
+                            <Typography variant="caption" color="secondary" style={{ textAlign: 'center', marginTop: 4 }}>
+                                Add transactions using this account to see them here.
+                            </Typography>
+                        </View>
+                    ) : (
+                        <ScrollView showsVerticalScrollIndicator={false}>
+                            {accountTransactions.map((tx) => (
+                                <View
+                                    key={tx.id}
+                                    style={[styles.transactionItem, { backgroundColor: bgColor }]}
+                                >
+                                    <View style={[
+                                        styles.txIcon,
+                                        { backgroundColor: tx.type === 'income' ? '#22C55E20' : '#EF444420' }
+                                    ]}>
+                                        <Icon
+                                            name={tx.type === 'income' ? 'arrow-down-bold' : 'arrow-up-bold'}
+                                            size={18}
+                                            color={tx.type === 'income' ? '#22C55E' : '#EF4444'}
+                                        />
+                                    </View>
+                                    <View style={{ flex: 1, marginLeft: spacing.md }}>
+                                        <Typography variant="body" weight="medium" numberOfLines={1}>
+                                            {tx.description || tx.category || 'Transaction'}
+                                        </Typography>
+                                        <Typography variant="caption" color="secondary">
+                                            {new Date(tx.date).toLocaleDateString('en-IN', {
+                                                day: 'numeric',
+                                                month: 'short',
+                                                year: 'numeric'
+                                            })}
+                                            {tx.category ? ` • ${tx.category}` : ''}
+                                        </Typography>
+                                    </View>
+                                    <Typography
+                                        variant="body"
+                                        weight="semibold"
+                                        style={{ color: tx.type === 'income' ? '#22C55E' : '#EF4444' }}
+                                    >
+                                        {tx.type === 'income' ? '+' : '-'}₹{tx.amount.toLocaleString()}
+                                    </Typography>
+                                </View>
+                            ))}
+                        </ScrollView>
+                    )}
+                </View>
+            </View>
+        </Modal>
+    );
+};
+
 const AccountsScreen: React.FC = () => {
     const insets = useSafeAreaInsets();
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const colors = isDark ? themes.dark : themes.light;
 
-    const { bankAccounts, addBankAccount, totalIncome, totalSpent } = useApp();
+    const { bankAccounts, addBankAccount, totalIncome, totalSpent, transactions, refreshData } = useApp();
     const [showAddModal, setShowAddModal] = useState(false);
+    const [selectedAccount, setSelectedAccount] = useState<BankAccount | null>(null);
+    const [showStatementModal, setShowStatementModal] = useState(false);
+
+    const [refreshing, setRefreshing] = useState(false);
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        await refreshData();
+        setRefreshing(false);
+    }, [refreshData]);
 
     const totalBalance = bankAccounts.reduce((sum, acc) => sum + acc.balance, 0);
+
+    const handleAccountPress = (account: BankAccount) => {
+        setSelectedAccount(account);
+        setShowStatementModal(true);
+    };
 
     const renderAccount = ({ item }: { item: BankAccount }) => {
         const gradient = ACCOUNTS_GRADIENTS[item.type] || ACCOUNTS_GRADIENTS.bank;
 
         return (
-            <View style={styles.cardContainer}>
+            <Pressable
+                style={styles.cardContainer}
+                onPress={() => handleAccountPress(item)}
+            >
                 <LinearGradient
                     colors={gradient}
                     start={{ x: 0, y: 0 }}
@@ -167,9 +323,10 @@ const AccountsScreen: React.FC = () => {
                                 color="#FFF"
                             />
                         </View>
-                        <Pressable>
-                            <Icon name="dots-horizontal" size={24} color="rgba(255,255,255,0.8)" />
-                        </Pressable>
+                        <View style={styles.viewStatementHint}>
+                            <Typography variant="caption" style={{ color: 'rgba(255,255,255,0.7)', marginRight: 4 }}>View</Typography>
+                            <Icon name="chevron-right" size={16} color="rgba(255,255,255,0.7)" />
+                        </View>
                     </View>
 
                     <View style={styles.cardBody}>
@@ -193,7 +350,7 @@ const AccountsScreen: React.FC = () => {
                     <View style={[styles.circle, { width: 100, height: 100, right: -20, top: -20, opacity: 0.1 }]} />
                     <View style={[styles.circle, { width: 60, height: 60, right: 40, bottom: -20, opacity: 0.1 }]} />
                 </LinearGradient>
-            </View>
+            </Pressable>
         );
     };
 
@@ -227,12 +384,27 @@ const AccountsScreen: React.FC = () => {
                 keyExtractor={item => item.id}
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor={colors.primary}
+                        colors={[colors.primary]}
+                    />
+                }
             />
 
             <AddAccountModal
                 visible={showAddModal}
                 onClose={() => setShowAddModal(false)}
                 onAdd={addBankAccount}
+            />
+
+            <AccountStatementModal
+                visible={showStatementModal}
+                onClose={() => setShowStatementModal(false)}
+                account={selectedAccount}
+                transactions={transactions}
             />
         </View>
     );
@@ -366,6 +538,64 @@ const styles = StyleSheet.create({
         paddingVertical: 12,
         paddingHorizontal: 24,
         borderRadius: 12,
+    },
+    // Account Statement Modal Styles
+    statementContainer: {
+        flex: 1,
+    },
+    statementHeader: {
+        padding: spacing.lg,
+        paddingBottom: spacing.xl,
+    },
+    statementHeaderTop: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: spacing.md,
+    },
+    backBtn: {
+        width: 40,
+        height: 40,
+        justifyContent: 'center',
+        alignItems: 'flex-start',
+    },
+    statementAccountInfo: {
+        alignItems: 'center',
+        marginVertical: spacing.md,
+    },
+    statementSummary: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        gap: spacing.xl,
+        marginTop: spacing.md,
+    },
+    statementSummaryItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    emptyState: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: spacing.xl,
+    },
+    transactionItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: spacing.md,
+        borderRadius: 12,
+        marginBottom: spacing.sm,
+    },
+    txIcon: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    viewStatementHint: {
+        flexDirection: 'row',
+        alignItems: 'center',
     },
 });
 

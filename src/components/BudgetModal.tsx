@@ -91,7 +91,7 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
                                     <Slider
                                         style={styles.slider}
                                         minimumValue={1000}
-                                        maximumValue={50000}
+                                        maximumValue={500000}
                                         step={500}
                                         value={budgetValue}
                                         onValueChange={setBudgetValue}
@@ -101,7 +101,7 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
                                     />
                                     <View style={styles.sliderLabels}>
                                         <Typography variant="caption" color="secondary">₹1k</Typography>
-                                        <Typography variant="caption" color="secondary">₹50k</Typography>
+                                        <Typography variant="caption" color="secondary">₹5L</Typography>
                                     </View>
                                 </View>
 

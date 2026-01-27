@@ -20,7 +20,7 @@ const lightColors = {
   warning: '#F59E0B',       // Amber-500
   error: '#EF4444',         // Red-500
 
-  background: '#FAFAFA',    // Zinc-50
+  background: '#F0F8FF',    // Azure White
   surface: '#FFFFFF',
   surfaceGlass: 'rgba(255, 255, 255, 0.9)',
   card: '#FFFFFF',

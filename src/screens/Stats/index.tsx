@@ -18,25 +18,41 @@ import {
     Text,
     LayoutAnimation,
     Alert,
+    RefreshControl,
+    Dimensions,
 } from 'react-native';
+import { generateInsights, Insight } from '../../utils/insights';
+import { PieChart } from 'react-native-chart-kit';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Typography } from '../../components/common';
 import { MonthDropdown, MonthFilter } from '../../components/MonthDropdown';
 import { useApp } from '../../context/AppContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { themes, spacing } from '../../theme';
 
-// Get merchants from transactions
+// Get merchants from transactions - extracts from description
 const extractMerchants = (transactions: any[]) => {
     const merchantMap: Record<string, { amount: number; count: number }> = {};
+
     transactions
-        .filter(t => t.type === 'expense' && t.merchant)
+        .filter(t => t.type === 'expense')
         .forEach(t => {
-            if (!merchantMap[t.merchant]) {
-                merchantMap[t.merchant] = { amount: 0, count: 0 };
+            // Use merchant field if available, otherwise extract from description
+            let merchantName = t.merchant || t.description || 'Unknown';
+
+            // Clean up merchant name - take first meaningful part
+            merchantName = merchantName.split(' - ')[0].split(' at ')[1] || merchantName.split(' - ')[0];
+            merchantName = merchantName.trim();
+
+            // Skip very generic descriptions
+            if (!merchantName || merchantName.toLowerCase() === 'expense') return;
+
+            if (!merchantMap[merchantName]) {
+                merchantMap[merchantName] = { amount: 0, count: 0 };
             }
-            merchantMap[t.merchant].amount += t.amount;
-            merchantMap[t.merchant].count += 1;
+            merchantMap[merchantName].amount += t.amount;
+            merchantMap[merchantName].count += 1;
         });
 
     return Object.entries(merchantMap)
@@ -47,7 +63,7 @@ const extractMerchants = (transactions: any[]) => {
 
 // Action Item with proper strike-through
 const ActionItem: React.FC<{
-    task: { id: string; title: string; desc: string; completed: boolean };
+    task: { id: string | number; title: string; desc: string; completed: boolean };
     onToggle: () => void;
     onDelete: () => void;
     cardBg: string;
@@ -72,7 +88,7 @@ const ActionItem: React.FC<{
     });
 
     return (
-        <Pressable onPress={handlePress} style={[styles.taskRow, { backgroundColor: cardBg }]}>
+        <Pressable onPress={handlePress} style={[styles.taskRow, { backgroundColor: cardBg, opacity: task.completed ? 0.5 : 1 }]}>
             <View style={[
                 styles.checkbox,
                 { borderColor: task.completed ? '#3B82F6' : colors.textMuted, backgroundColor: task.completed ? '#3B82F6' : 'transparent' }
@@ -307,24 +323,52 @@ const StatsScreen: React.FC = () => {
     const bgColor = isDark ? colors.background : '#FAFAFA';
     const cardBg = isDark ? colors.card : '#FFFFFF';
 
-    const { transactions, totalSpent, userData } = useApp();
+    const { filteredTransactions, totalSpent, userData, refreshData, selectedMonth, selectedYear, setSelectedMonth } = useApp();
+    const { t } = useLanguage();
+
+    const [refreshing, setRefreshing] = useState(false);
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await refreshData();
+        setRefreshing(false);
+    };
 
     const [showAddAction, setShowAddAction] = useState(false);
-    const [selectedMonth, setSelectedMonth] = useState<MonthFilter>('this');
-    const [tasks, setTasks] = useState([
-        { id: '1', title: 'Reduce food spending', desc: 'Set ₹6k monthly budget', completed: false },
-        { id: '2', title: 'Cancel unused subscriptions', desc: 'Review all recurring payments', completed: false },
-        { id: '3', title: 'Emergency fund goal', desc: 'Reach 3 months expenses', completed: false },
-    ]);
+    // Convert global month to MonthFilter type for dropdown compatibility
+    const now = new Date();
+    const isThisMonth = selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear();
+    const [monthFilter, setMonthFilter] = useState<MonthFilter>(isThisMonth ? 'this' : 'prev');
+    const [tasks, setTasks] = useState<{ id: string | number; title: string; desc: string; completed: boolean }[]>([]);
 
-    const merchants = extractMerchants(transactions);
-    const savingsRate = userData.income > 0 ? Math.round(((userData.income - totalSpent) / userData.income) * 100) : 0;
+    const handleMonthChange = (filter: MonthFilter) => {
+        setMonthFilter(filter);
+        const date = new Date();
+        if (filter === 'this') {
+            setSelectedMonth(date.getMonth() + 1, date.getFullYear());
+        } else {
+            const prevMonth = date.getMonth() === 0 ? 12 : date.getMonth();
+            const prevYear = date.getMonth() === 0 ? date.getFullYear() - 1 : date.getFullYear();
+            setSelectedMonth(prevMonth, prevYear);
+        }
+    };
 
-    const toggleTask = (id: string) => {
+    const merchants = extractMerchants(filteredTransactions);
+
+    // Calculate actual income from transactions of this month
+    const actualIncome = filteredTransactions
+        .filter(t => t.type === 'income')
+        .reduce((sum, t) => sum + t.amount, 0);
+    const actualExpenses = filteredTransactions
+        .filter(t => t.type === 'expense')
+        .reduce((sum, t) => sum + t.amount, 0);
+    const savingsRate = actualIncome > 0 ? Math.round(((actualIncome - actualExpenses) / actualIncome) * 100) : 0;
+
+    const toggleTask = (id: string | number) => {
         setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
     };
 
-    const deleteTask = (id: string) => {
+    const deleteTask = (id: string | number) => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setTasks(prev => prev.filter(t => t.id !== id));
     };
@@ -333,6 +377,103 @@ const StatsScreen: React.FC = () => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setTasks(prev => [...prev, { id: Date.now().toString(), title, desc, completed: false }]);
     };
+
+    // Dynamic Suggestions based on spending analysis
+    useEffect(() => {
+        const newTasks: { id: string; title: string; desc: string; completed: boolean }[] = [];
+
+        // Get spending by category
+        const categorySpending: Record<string, number> = {};
+        filteredTransactions.filter(t => t.type === 'expense').forEach(t => {
+            const cat = t.category || 'misc';
+            categorySpending[cat] = (categorySpending[cat] || 0) + t.amount;
+        });
+
+        // Find highest spending category
+        const topCategory = Object.entries(categorySpending).sort((a, b) => b[1] - a[1])[0];
+
+        // Suggestion 1: High spending alert (>80% of income spent)
+        if (actualIncome > 0 && actualExpenses > actualIncome * 0.8) {
+            newTasks.push({
+                id: 's1',
+                title: '⚠️ High Spending Alert',
+                desc: `You've spent ${Math.round((actualExpenses / actualIncome) * 100)}% of your income`,
+                completed: false
+            });
+        }
+
+        // Suggestion 2: Savings rate improvement
+        if (actualIncome > 0 && savingsRate < 20 && savingsRate >= 0) {
+            const targetSavings = Math.round(actualIncome * 0.2);
+            const currentSavings = actualIncome - actualExpenses;
+            newTasks.push({
+                id: 's2',
+                title: '💰 Boost Your Savings',
+                desc: `Try to save ₹${(targetSavings - currentSavings).toLocaleString()} more this month`,
+                completed: false
+            });
+        }
+
+        // Suggestion 3: Top spending category alert
+        if (topCategory && topCategory[1] > actualIncome * 0.3 && actualIncome > 0) {
+            newTasks.push({
+                id: 's3',
+                title: `🔍 Review ${topCategory[0].charAt(0).toUpperCase() + topCategory[0].slice(1)} Spending`,
+                desc: `${Math.round((topCategory[1] / actualIncome) * 100)}% of income spent here`,
+                completed: false
+            });
+        }
+
+        // Suggestion 4: Top merchant spending
+        const topMerchant = merchants[0];
+        if (topMerchant && topMerchant.amount > 3000) {
+            newTasks.push({
+                id: 's4',
+                title: `📊 ${topMerchant.name} Analysis`,
+                desc: `₹${topMerchant.amount.toLocaleString()} spent across ${topMerchant.count} transactions`,
+                completed: false
+            });
+        }
+
+        // Suggestion 5: No income tracked
+        if (actualIncome === 0 && filteredTransactions.length > 0) {
+            newTasks.push({
+                id: 's5',
+                title: '📝 Add Your Income',
+                desc: 'Track salary/income for better insights',
+                completed: false
+            });
+        }
+
+        // Great job message if everything looks healthy
+        if (newTasks.length === 0 && filteredTransactions.length > 0) {
+            if (savingsRate >= 20) {
+                newTasks.push({
+                    id: 's6',
+                    title: '🎉 Great Savings!',
+                    desc: `You're saving ${savingsRate}% of your income`,
+                    completed: true
+                });
+            } else {
+                newTasks.push({
+                    id: 's7',
+                    title: '✅ Keep it up!',
+                    desc: 'Your spending looks healthy',
+                    completed: true
+                });
+            }
+        }
+
+        setTasks(prev => {
+            // Keep user added tasks (numeric IDs from Date.now()) and merge with suggestions
+            const userTasks = prev.filter(t => !t.id.toString().startsWith('s'));
+            return [...newTasks, ...userTasks];
+        });
+    }, [actualIncome, actualExpenses, savingsRate, merchants.length, filteredTransactions]);
+
+
+
+
 
     // Vendor detail modal state
     const [selectedVendor, setSelectedVendor] = useState<{ name: string; amount: number; count: number } | null>(null);
@@ -362,7 +503,7 @@ const StatsScreen: React.FC = () => {
     };
 
     const vendorTransactions = selectedVendor
-        ? transactions.filter(t => t.merchant === selectedVendor.name).slice(0, 5)
+        ? filteredTransactions.filter((t: any) => t.merchant === selectedVendor.name).slice(0, 5)
         : [];
 
     // Render vendor detail modal
@@ -447,46 +588,75 @@ const StatsScreen: React.FC = () => {
     return (
         <View style={[styles.container, { backgroundColor: bgColor }]}>
             <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
-                <Typography variant="h2" weight="semibold">Analytics</Typography>
-                <MonthDropdown value={selectedMonth} onChange={setSelectedMonth} />
+                <Typography variant="h2" weight="semibold">{t('stats.analytics') || 'Analytics'}</Typography>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <MonthDropdown value={monthFilter} onChange={handleMonthChange} />
+                </View>
             </View>
 
-            <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 120 + insets.bottom }]} showsVerticalScrollIndicator={false}>
+            <ScrollView
+                contentContainerStyle={[styles.content, { paddingBottom: 120 + insets.bottom }]}
+                showsVerticalScrollIndicator={false}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            >
                 {/* Summary Cards */}
                 <View style={styles.summaryRow}>
                     <View style={[styles.summaryCard, { backgroundColor: cardBg }]}>
-                        <Typography variant="caption" color="secondary">Total Spent</Typography>
+                        <Typography variant="caption" color="secondary">{t('stats.totalSpent') || 'Total Spent'}</Typography>
                         <Typography variant="h2" weight="bold">₹{totalSpent.toLocaleString()}</Typography>
                     </View>
                     <View style={[styles.summaryCard, { backgroundColor: cardBg }]}>
-                        <Typography variant="caption" color="secondary">Savings Rate</Typography>
+                        <Typography variant="caption" color="secondary">{t('stats.savingsRate') || 'Savings Rate'}</Typography>
                         <Typography variant="h2" weight="bold" style={{ color: savingsRate > 0 ? '#22C55E' : '#EF4444' }}>{savingsRate}%</Typography>
                     </View>
                 </View>
 
+                {/* Spending by Category (Pie Chart) */}
+
+
                 {/* Top Merchants */}
-                <Typography variant="caption" weight="semibold" color="secondary" style={styles.sectionLabel}>TOP MERCHANTS</Typography>
+                <Typography variant="caption" weight="semibold" color="secondary" style={styles.sectionLabel}>{t('stats.topMerchants')?.toUpperCase() || 'TOP MERCHANTS'}</Typography>
                 <View style={[styles.merchantsCard, { backgroundColor: cardBg }]}>
                     <VendorsChart vendors={merchants} isDark={isDark} colors={colors} onVendorPress={handleVendorPress} />
                 </View>
 
-                {/* Action Items */}
+                {/* Action Items (Dynamic Insights) */}
                 <View style={styles.actionHeader}>
-                    <Typography variant="caption" weight="semibold" color="secondary" style={styles.sectionLabel}>ACTION ITEMS</Typography>
-                    <Pressable onPress={() => setShowAddAction(true)} style={styles.addActionBtn}>
-                        <Icon name="plus" size={16} color="#3B82F6" />
-                        <Typography variant="caption" style={{ color: '#3B82F6', marginLeft: 4 }}>Add</Typography>
-                    </Pressable>
+                    <Typography variant="caption" weight="semibold" color="secondary" style={styles.sectionLabel}>{t('stats.actionItems')?.toUpperCase() || 'INSIGHTS & ACTIONS'}</Typography>
                 </View>
-                {tasks.map(task => (
-                    <ActionItem key={task.id} task={task} onToggle={() => toggleTask(task.id)} onDelete={() => deleteTask(task.id)} cardBg={cardBg} colors={colors} />
-                ))}
-            </ScrollView>
+
+                {(() => {
+                    const insights = generateInsights(filteredTransactions, []); // Pass budgets if available in context
+                    // If no insights, maybe show a default 'All good' message?
+                    if (insights.length === 0) {
+                        return (
+                            <View style={[styles.taskRow, { backgroundColor: cardBg, padding: 16, justifyContent: 'center', alignItems: 'center' }]}>
+                                <Icon name="check-circle-outline" size={24} color={colors.success || '#10B981'} />
+                                <Typography variant="body" weight="medium" style={{ marginTop: 8 }}>{t('stats.spendingHealthy') || 'Spending looks healthy!'}</Typography>
+                            </View>
+                        );
+                    }
+
+                    return insights.map((insight: Insight) => (
+                        <View key={insight.id} style={[styles.taskRow, { backgroundColor: cardBg, borderLeftWidth: 4, borderLeftColor: insight.type === 'alert' ? '#EF4444' : insight.type === 'warning' ? '#F59E0B' : '#3B82F6' }]}>
+                            <View style={{ marginRight: 12 }}>
+                                <Icon name={insight.icon} size={24} color={insight.type === 'alert' ? '#EF4444' : insight.type === 'warning' ? '#F59E0B' : '#3B82F6'} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Typography variant="body" weight="semibold" style={{ textDecorationLine: 'none' }}>{insight.title}</Typography>
+                                <Typography variant="caption" color="secondary">{insight.description}</Typography>
+                            </View>
+                        </View>
+                    ));
+                })()}
+
+                <View style={{ height: 20 }} />
+            </ScrollView >
 
 
             <AddActionModal visible={showAddAction} onClose={() => setShowAddAction(false)} onAdd={addTask} />
             {renderVendorModal()}
-        </View>
+        </View >
     );
 };
 

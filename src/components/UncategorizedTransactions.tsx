@@ -2,9 +2,10 @@
  * Uncategorized Transactions - Clean Modern UI
  * ==============================================
  * Minimal card with swipe-to-categorize
+ * Now creates merchant rules for auto-categorization
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
     View,
     StyleSheet,
@@ -12,43 +13,41 @@ import {
     Modal,
     useColorScheme,
     Animated,
+    Switch,
+    ScrollView,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Typography } from './common';
 import { themes, spacing } from '../theme';
-
-interface UncategorizedItem {
-    id: string;
-    description: string;
-    amount: number;
-    date: string;
-}
-
-const mockItems: UncategorizedItem[] = [
-    { id: '1', description: 'POS Transaction #1234', amount: 450, date: '2026-01-05' },
-    { id: '2', description: 'UPI - XYZ123', amount: 1200, date: '2026-01-04' },
-    { id: '3', description: 'Card Payment - Unknown', amount: 89, date: '2026-01-03' },
-];
-
-const categories = [
-    { type: 'food', label: 'Food', icon: '🍽️', color: '#3B82F6' },
-    { type: 'transport', label: 'Travel', icon: '🚗', color: '#8B5CF6' },
-    { type: 'shopping', label: 'Shop', icon: '🛒', color: '#EC4899' },
-    { type: 'bills', label: 'Bills', icon: '📄', color: '#10B981' },
-    { type: 'entertainment', label: 'Fun', icon: '🎬', color: '#F59E0B' },
-    { type: 'health', label: 'Health', icon: '💊', color: '#EF4444' },
-    { type: 'misc', label: 'Misc', icon: '📌', color: '#6B7280' },
-];
+import { useApp, Transaction } from '../context/AppContext';
+import { MerchantRulesService } from '../services/MerchantRulesService';
+import { useCategories } from '../hooks/useCategories';
 
 export const UncategorizedTransactions: React.FC = () => {
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const colors = isDark ? themes.dark : themes.light;
 
-    const [items, setItems] = useState(mockItems);
-    const [selectedItem, setSelectedItem] = useState<UncategorizedItem | null>(null);
+    const { transactions, updateTransaction } = useApp();
+    const { allCategories } = useCategories();
+
+    // Filter for uncategorized transactions from global state
+    // We assume backend sends "uncategorized" or maybe null, checking for both
+    const items = useMemo(() => {
+        const filtered = transactions.filter(t =>
+            !t.category ||
+            t.category.toLowerCase() === 'uncategorized' ||
+            t.category.toLowerCase() === 'unknown'
+        );
+        // Safety dedup
+        const uniqueItems = Array.from(new Map(filtered.map(item => [item.id, item])).values());
+        return uniqueItems;
+    }, [transactions]);
+
+    const [selectedItem, setSelectedItem] = useState<Transaction | null>(null);
     const [showModal, setShowModal] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
+    const [rememberChoice, setRememberChoice] = useState(true); // Auto-create rule
 
     const slideAnim = useRef(new Animated.Value(400)).current;
     const backdropAnim = useRef(new Animated.Value(0)).current;
@@ -71,9 +70,19 @@ export const UncategorizedTransactions: React.FC = () => {
         }
     }, [showModal]);
 
-    const handleCategorize = (categoryType: string) => {
+    const handleCategorize = async (categoryType: string) => {
         if (selectedItem) {
-            setItems(prev => prev.filter(i => i.id !== selectedItem.id));
+            // Update via Context (which calls API) - await to ensure pie chart refreshes
+            await updateTransaction(selectedItem.id, { category: categoryType });
+
+            // Create merchant rule for future auto-categorization
+            if (rememberChoice && selectedItem.merchant) {
+                await MerchantRulesService.setCategoryWithRule(selectedItem.merchant, categoryType);
+            } else if (rememberChoice && selectedItem.description) {
+                // Try to extract merchant from description
+                await MerchantRulesService.setCategoryWithRule(selectedItem.description, categoryType);
+            }
+
             setShowModal(false);
             setSelectedItem(null);
         }
@@ -81,44 +90,53 @@ export const UncategorizedTransactions: React.FC = () => {
 
     const cardBg = isDark ? colors.card : '#FFFFFF';
 
-    if (items.length === 0) return null;
+    if (items.length === 0) return (
+        <View style={[styles.section, { alignItems: 'center', padding: spacing.xl }]}>
+            <Icon name="check-circle-outline" size={48} color={colors.textMuted} style={{ marginBottom: spacing.sm, opacity: 0.5 }} />
+            <Typography variant="body" color="secondary">All caught up! No transactions to review.</Typography>
+        </View>
+    );
 
     return (
         <>
             {/* Main Section */}
             <View style={styles.section}>
                 <View style={[styles.card, { backgroundColor: cardBg }]}>
-                    {items.slice(0, 3).map((item, index) => (
-                        <Pressable
-                            key={item.id}
-                            style={({ pressed }) => [
-                                styles.item,
-                                {
-                                    opacity: pressed ? 0.8 : 1,
-                                    transform: [{ scale: pressed ? 0.99 : 1 }]
-                                },
-                                index < Math.min(items.length, 3) - 1 && [
-                                    styles.itemBorder,
-                                    { borderBottomColor: colors.border }
-                                ]
-                            ]}
-                            onPress={() => { setSelectedItem(item); setShowModal(true); }}
-                        >
-                            <View style={[styles.itemDot, { backgroundColor: '#F59E0B' }]} />
-                            <View style={styles.itemContent}>
-                                <Typography variant="body" weight="medium" numberOfLines={1}>
-                                    {item.description}
-                                </Typography>
-                                <Typography variant="caption" color="secondary">
-                                    {new Date(item.date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
-                                </Typography>
-                            </View>
-                            <View style={styles.itemRight}>
-                                <Typography variant="body" weight="semibold">₹{item.amount}</Typography>
-                                <Icon name="chevron-right" size={18} color={colors.textMuted} />
-                            </View>
-                        </Pressable>
-                    ))}
+                    {items.slice(0, 5).map((item, index) => {
+                        // Debug log for keys
+                        if (index === 0) console.log('Rendering Uncategorized items:', items.slice(0, 5).map(i => i.id));
+                        return (
+                            <Pressable
+                                key={item.id}
+                                style={({ pressed }) => [
+                                    styles.item,
+                                    {
+                                        opacity: pressed ? 0.8 : 1,
+                                        transform: [{ scale: pressed ? 0.99 : 1 }]
+                                    },
+                                    index < Math.min(items.length, 5) - 1 && [
+                                        styles.itemBorder,
+                                        { borderBottomColor: colors.border }
+                                    ]
+                                ]}
+                                onPress={() => { setSelectedItem(item); setShowModal(true); }}
+                            >
+                                <View style={[styles.itemDot, { backgroundColor: '#F59E0B' }]} />
+                                <View style={styles.itemContent}>
+                                    <Typography variant="body" weight="medium" numberOfLines={1}>
+                                        {item.description}
+                                    </Typography>
+                                    <Typography variant="caption" color="secondary">
+                                        {new Date(item.date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+                                    </Typography>
+                                </View>
+                                <View style={styles.itemRight}>
+                                    <Typography variant="body" weight="semibold">₹{item.amount}</Typography>
+                                    <Icon name="chevron-right" size={18} color={colors.textMuted} />
+                                </View>
+                            </Pressable>
+                        );
+                    })}
                 </View>
             </View>
 
@@ -149,10 +167,13 @@ export const UncategorizedTransactions: React.FC = () => {
                                     {selectedItem.description}
                                 </Typography>
 
-                                <View style={styles.categoriesGrid}>
-                                    {categories.map((cat) => (
+                                <ScrollView
+                                    contentContainerStyle={styles.categoriesGrid}
+                                    showsVerticalScrollIndicator={false}
+                                >
+                                    {allCategories.map((cat) => (
                                         <Pressable
-                                            key={cat.type}
+                                            key={cat.key}
                                             style={({ pressed }) => [
                                                 styles.categoryBtn,
                                                 {
@@ -160,7 +181,7 @@ export const UncategorizedTransactions: React.FC = () => {
                                                     borderColor: cat.color,
                                                 }
                                             ]}
-                                            onPress={() => handleCategorize(cat.type)}
+                                            onPress={() => handleCategorize(cat.key)}
                                         >
                                             <Typography variant="lg">{cat.icon}</Typography>
                                             <Typography
@@ -172,6 +193,24 @@ export const UncategorizedTransactions: React.FC = () => {
                                             </Typography>
                                         </Pressable>
                                     ))}
+                                </ScrollView>
+
+                                {/* Remember this choice toggle */}
+                                <View style={styles.rememberRow}>
+                                    <View style={{ flex: 1 }}>
+                                        <Typography variant="body" weight="medium">
+                                            Remember for this merchant
+                                        </Typography>
+                                        <Typography variant="caption" color="secondary">
+                                            Auto-categorize future transactions
+                                        </Typography>
+                                    </View>
+                                    <Switch
+                                        value={rememberChoice}
+                                        onValueChange={setRememberChoice}
+                                        trackColor={{ false: '#767577', true: '#3B82F6' }}
+                                        thumbColor={rememberChoice ? '#FFFFFF' : '#f4f3f4'}
+                                    />
                                 </View>
 
                                 <Pressable
@@ -271,8 +310,17 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
-    skipBtn: {
+    rememberRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
         marginTop: spacing.lg,
+        paddingVertical: spacing.sm,
+        paddingHorizontal: spacing.sm,
+        borderRadius: 12,
+        backgroundColor: 'rgba(59, 130, 246, 0.08)',
+    },
+    skipBtn: {
+        marginTop: spacing.md,
         alignSelf: 'center',
         paddingVertical: spacing.sm,
     },

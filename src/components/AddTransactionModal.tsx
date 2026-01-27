@@ -17,12 +17,16 @@ import {
     Platform,
     LayoutAnimation,
     ScrollView,
+    Text,
 } from 'react-native';
+import { useLanguage } from '../context/LanguageContext';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Typography, CustomDatePicker, CustomDropdown } from './common';
 import { AddCategoryModal } from './AddCategoryModal';
 import { useApp } from '../context/AppContext';
+
 import { themes, spacing } from '../theme';
 
 interface AddTransactionModalProps {
@@ -40,15 +44,7 @@ interface AddTransactionModalProps {
     }) => void;
 }
 
-const defaultCategories = [
-    { key: 'food', label: 'Food', icon: '🍽️', color: '#3B82F6' },
-    { key: 'transport', label: 'Travel', icon: '🚗', color: '#8B5CF6' },
-    { key: 'shopping', label: 'Shop', icon: '🛒', color: '#EC4899' },
-    { key: 'bills', label: 'Bills', icon: '📄', color: '#10B981' },
-    { key: 'entertainment', label: 'Fun', icon: '🎬', color: '#F59E0B' },
-    { key: 'health', label: 'Health', icon: '💊', color: '#EF4444' },
-    { key: 'misc', label: 'Misc', icon: '📌', color: '#6B7280' },
-];
+import { useCategories } from '../hooks/useCategories';
 
 export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     visible,
@@ -59,10 +55,9 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const colors = isDark ? themes.dark : themes.light;
-    const { customCategories, bankAccounts } = useApp();
-
-    // Merge default categories with custom ones
-    const allCategories = [...defaultCategories, ...customCategories];
+    const { bankAccounts } = useApp();
+    const { t } = useLanguage();
+    const { allCategories } = useCategories();
 
     const [type, setType] = useState<'expense' | 'income'>('expense');
     const [amount, setAmount] = useState('');
@@ -196,7 +191,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         <Pressable onPress={onClose} style={styles.closeBtn}>
                             <Icon name="close" size={22} color={colors.textMuted} />
                         </Pressable>
-                        <Typography variant="body" weight="semibold">New Transaction</Typography>
+                        <Typography variant="body" weight="semibold">{t('transactions.newTransaction')}</Typography>
                         <View style={{ width: 40 }} />
                     </View>
 
@@ -223,17 +218,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                     weight="semibold"
                                     style={{ color: type === 'expense' ? '#FFF' : colors.textMuted, marginLeft: 4 }}
                                 >
-                                    Expense
+                                    {t('transactions.expense') || 'Expense'}
                                 </Typography>
                             </Pressable>
                             <Pressable style={styles.toggleBtn} onPress={() => handleTypeChange('income')}>
                                 <Icon name="arrow-down" size={16} color={type === 'income' ? '#FFF' : colors.textMuted} />
                                 <Typography
-                                    variant="bodySmall"
-                                    weight="semibold"
-                                    style={{ color: type === 'income' ? '#FFF' : colors.textMuted, marginLeft: 4 }}
                                 >
-                                    Income
+                                    {t('transactions.income') || 'Income'}
                                 </Typography>
                             </Pressable>
                         </View>
@@ -255,13 +247,33 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             <View style={[styles.amountLine, { backgroundColor: accentColor }]} />
                         </View>
 
+
+                        {/* Date - Moved up for better visibility */}
+                        <View style={styles.inputGroup}>
+                            {/* Removed label to save space, icon is sufficient */}
+                            <Pressable
+                                style={[styles.textInput, { backgroundColor: inputBg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12 }]}
+                                onPress={() => setShowDatePicker(true)}
+                            >
+                                <Icon name="calendar-month" size={20} color={colors.primary} style={{ marginRight: 8 }} />
+                                <Typography variant="body" weight="medium" style={{ color: colors.text }}>
+                                    {transactionDate.toLocaleDateString('default', {
+                                        day: 'numeric',
+                                        month: 'short',
+                                        year: 'numeric'
+                                    })}
+                                </Typography>
+                                <Icon name="chevron-down" size={16} color={colors.textMuted} style={{ marginLeft: 6 }} />
+                            </Pressable>
+                        </View>
+
                         {/* Description */}
                         <View style={styles.inputGroup}>
                             <TextInput
                                 style={[styles.textInput, { backgroundColor: inputBg, color: colors.text }]}
                                 value={description}
                                 onChangeText={setDescription}
-                                placeholder="What's this for?"
+                                placeholder={t('transactions.whatsThisFor') || "What's this for?"}
                                 placeholderTextColor={colors.textMuted}
                             />
                         </View>
@@ -277,10 +289,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             <ScrollView
                                 horizontal
                                 showsHorizontalScrollIndicator={false}
-                                contentContainerStyle={styles.categoriesScroll}
+                                contentContainerStyle={{ paddingHorizontal: 12, gap: 10 }}
                             >
                                 {allCategories.map((cat) => {
                                     const isSelected = selectedCategory === cat.key;
+
                                     return (
                                         <Pressable
                                             key={cat.key}
@@ -289,20 +302,33 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                                 styles.categoryChip,
                                                 {
                                                     backgroundColor: isSelected ? cat.color : inputBg,
-                                                    borderColor: isSelected ? cat.color : 'transparent',
+                                                    borderWidth: isSelected ? 0 : 1,
+                                                    borderColor: colors.border
                                                 }
                                             ]}
                                         >
                                             <Typography variant="body">{cat.icon}</Typography>
+
+                                            <Typography
+                                                style={[
+                                                    styles.categoryLabel,
+                                                    { color: isSelected ? '#FFF' : colors.text }
+                                                ]}
+                                                numberOfLines={1}
+                                                ellipsizeMode="tail"
+                                            >
+                                                {cat.label}
+                                            </Typography>
                                         </Pressable>
                                     );
                                 })}
-                                {/* Add Category Button */}
+
+                                {/* Add category */}
                                 <Pressable
                                     onPress={() => setShowAddCategory(true)}
-                                    style={[styles.categoryChip, styles.addCategoryBtn, { borderColor: colors.border }]}
+                                    style={[styles.categoryChip, styles.addCategoryBtn]}
                                 >
-                                    <Icon name="plus" size={20} color={colors.textMuted} />
+                                    <Icon name="plus" size={22} color={colors.textMuted} />
                                 </Pressable>
                             </ScrollView>
                         </Animated.View>
@@ -323,14 +349,14 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                 style={[styles.textInput, { backgroundColor: inputBg, color: colors.text }]}
                                 value={vendor}
                                 onChangeText={setVendor}
-                                placeholder="Vendor/Merchant (e.g., Swiggy)"
+                                placeholder={`${t('transactions.vendor') || 'Vendor'} (e.g., Swiggy)`}
                                 placeholderTextColor={colors.textMuted}
                             />
                         </Animated.View>
 
                         {/* Payment Method */}
                         <View style={styles.inputGroup}>
-                            <Typography variant="caption" color="secondary" style={{ marginBottom: 8 }}>Payment Method</Typography>
+                            <Typography variant="caption" color="secondary" style={{ marginBottom: 8 }}>{t('transactions.paymentMethod') || 'Payment Method'}</Typography>
                             <View style={styles.paymentRow}>
                                 {(['cash', 'upi', 'card', 'netbanking'] as const).map((pm) => (
                                     <Pressable
@@ -342,7 +368,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                                         onPress={() => setPaymentMethod(pm)}
                                     >
                                         <Typography variant="caption" weight={paymentMethod === pm ? 'semibold' : 'regular'} style={{ color: paymentMethod === pm ? '#FFF' : colors.text }}>
-                                            {pm === 'netbanking' ? 'Bank' : pm.toUpperCase()}
+                                            {pm === 'netbanking' ? (t('wallet.bank') || 'Bank') : (t(`wallet.${pm}`) || pm.toUpperCase())}
                                         </Typography>
                                     </Pressable>
                                 ))}
@@ -352,8 +378,8 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                         {/* Account Selector */}
                         <View style={styles.inputGroup}>
                             <CustomDropdown
-                                label="From Account"
-                                placeholder="Select Account"
+                                label={t('addTransaction.fromAccount') || "From Account"}
+                                placeholder={t('addTransaction.selectAccount') || "Select Account"}
                                 options={bankAccounts.map(acc => ({
                                     label: acc.name,
                                     value: acc.id,
@@ -365,25 +391,13 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             />
                         </View>
 
-                        {/* Date */}
-                        <View style={styles.inputGroup}>
-                            <Typography variant="caption" color="secondary" style={{ marginBottom: 8 }}>Date</Typography>
-                            <Pressable
-                                style={[styles.textInput, { backgroundColor: inputBg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]}
-                                onPress={() => setShowDatePicker(true)}
-                            >
-                                <Icon name="calendar" size={20} color={colors.textMuted} style={{ marginRight: 8 }} />
-                                <Typography variant="body" weight="medium" style={{ color: colors.text }}>
-                                    {transactionDate.toLocaleDateString('default', {
-                                        day: 'numeric',
-                                        month: 'long',
-                                        year: 'numeric'
-                                    })}
-                                </Typography>
-                            </Pressable>
-                        </View>
+                        {/* Date Moved Up */}
 
                         {/* Submit Button */}
+                    </ScrollView>
+
+                    {/* Submit Button - Sticky Footer */}
+                    <View style={{ padding: spacing.lg, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }}>
                         <Pressable
                             style={({ pressed }) => [
                                 styles.submitBtn,
@@ -392,10 +406,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                             onPress={handleSubmit}
                         >
                             <Typography variant="body" weight="semibold" style={{ color: '#FFF' }}>
-                                Add {type === 'expense' ? 'Expense' : 'Income'}
+                                {type === 'expense' ? (t('addTransaction.addExpense') || 'Add Expense') : (t('addTransaction.addIncome') || 'Add Income')}
                             </Typography>
                         </Pressable>
-                    </ScrollView>
+                    </View>
                 </Animated.View>
 
             </KeyboardAvoidingView>
@@ -446,7 +460,20 @@ const styles = StyleSheet.create({
     textInput: { paddingHorizontal: spacing.md, paddingVertical: 14, borderRadius: 12, fontSize: 16, textAlign: 'center' },
     categoriesSection: { marginBottom: spacing.md },
     categoriesScroll: { paddingHorizontal: spacing.sm, gap: 10 },
-    categoryChip: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+    categoryChip: {
+        width: 64,
+        minHeight: 64,
+        borderRadius: 14,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 6,
+    },
+    categoryLabel: {
+        marginTop: 4,
+        textAlign: 'center',
+        fontSize: 11,
+        lineHeight: 13,
+    },
     addCategoryBtn: { borderWidth: 1.5, borderStyle: 'dashed', backgroundColor: 'transparent' },
     paymentRow: { flexDirection: 'row', gap: 8 },
     paymentChip: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },

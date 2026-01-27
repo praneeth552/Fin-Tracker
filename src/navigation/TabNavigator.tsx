@@ -26,15 +26,17 @@ import CategoriesScreen from '../screens/Categories';
 import StatsScreen from '../screens/Stats';
 import { AddTransactionModal } from '../components/AddTransactionModal';
 import { themes } from '../theme';
+import { useLanguage } from '../context/LanguageContext';
 
 const Tab = createBottomTabNavigator();
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const tabs = [
-    { name: 'Dashboard', component: DashboardScreen, label: 'Home', icon: 'home-variant-outline', iconActive: 'home-variant' },
-    { name: 'Transactions', component: TransactionsScreen, label: 'Activity', icon: 'swap-horizontal', iconActive: 'swap-horizontal' },
-    { name: 'Categories', component: CategoriesScreen, label: 'Wallet', icon: 'wallet-outline', iconActive: 'wallet' },
-    { name: 'Stats', component: StatsScreen, label: 'Stats', icon: 'chart-line', iconActive: 'chart-line' },
+// Tab definitions - labels are translation keys
+const tabDefinitions = [
+    { name: 'Dashboard', component: DashboardScreen, labelKey: 'nav.home', icon: 'home-variant-outline', iconActive: 'home-variant' },
+    { name: 'Transactions', component: TransactionsScreen, labelKey: 'nav.activity', icon: 'swap-horizontal', iconActive: 'swap-horizontal' },
+    { name: 'Categories', component: CategoriesScreen, labelKey: 'nav.wallet', icon: 'wallet-outline', iconActive: 'wallet' },
+    { name: 'Stats', component: StatsScreen, labelKey: 'nav.stats', icon: 'chart-line', iconActive: 'chart-line' },
 ];
 
 // Dimensions
@@ -50,13 +52,14 @@ const springConfig = {
 };
 
 interface TabItemProps {
-    tab: typeof tabs[0];
+    tab: typeof tabDefinitions[0];
+    label: string;
     isFocused: boolean;
     onPress: () => void;
     colors: typeof themes.light;
 }
 
-const TabItem: React.FC<TabItemProps> = ({ tab, isFocused, onPress, colors }) => {
+const TabItem: React.FC<TabItemProps> = ({ tab, label, isFocused, onPress, colors }) => {
     const scaleAnim = useRef(new Animated.Value(1)).current;
     const bgOpacity = useRef(new Animated.Value(isFocused ? 1 : 0)).current;
 
@@ -83,7 +86,7 @@ const TabItem: React.FC<TabItemProps> = ({ tab, isFocused, onPress, colors }) =>
         <Pressable
             accessibilityRole="button"
             accessibilityState={isFocused ? { selected: true } : {}}
-            accessibilityLabel={tab.label}
+            accessibilityLabel={label}
             onPressIn={handlePressIn}
             onPressOut={handlePressOut}
             onPress={onPress}
@@ -111,7 +114,7 @@ const TabItem: React.FC<TabItemProps> = ({ tab, isFocused, onPress, colors }) =>
                     ]}
                     numberOfLines={1}
                 >
-                    {tab.label}
+                    {label}
                 </Text>
             </Animated.View>
         </Pressable>
@@ -179,6 +182,7 @@ const CustomTabBar: React.FC<CustomTabBarProps> = ({ state, descriptors, navigat
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const colors = isDark ? themes.dark : themes.light;
+    const { t } = useLanguage();
 
     const [showAddModal, setShowAddModal] = useState(false);
 
@@ -218,7 +222,7 @@ const CustomTabBar: React.FC<CustomTabBarProps> = ({ state, descriptors, navigat
                     ]}
                 >
                     {state.routes.map((route: any, index: number) => {
-                        const tab = tabs.find(t => t.name === route.name);
+                        const tab = tabDefinitions.find((td: typeof tabDefinitions[0]) => td.name === route.name);
                         if (!tab) return null;
 
                         const isFocused = state.index === index;
@@ -238,6 +242,7 @@ const CustomTabBar: React.FC<CustomTabBarProps> = ({ state, descriptors, navigat
                             <TabItem
                                 key={route.key}
                                 tab={tab}
+                                label={t(tab.labelKey)}
                                 isFocused={isFocused}
                                 onPress={onPress}
                                 colors={colors}
@@ -266,7 +271,7 @@ const TabNavigator: React.FC = () => {
                 animation: 'fade',
             }}
         >
-            {tabs.map((tab) => (
+            {tabDefinitions.map((tab: typeof tabDefinitions[0]) => (
                 <Tab.Screen
                     key={tab.name}
                     name={tab.name}

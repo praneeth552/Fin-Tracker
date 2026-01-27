@@ -23,6 +23,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Typography } from '../../components/common';
 import { themes, spacing, borderRadius } from '../../theme';
 import { useAuth } from '../../../App';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface SettingsScreenProps {
     navigation: any;
@@ -33,11 +34,13 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const colors = isDark ? themes.dark : themes.light;
-    const bgColor = isDark ? colors.background : '#FAFAFA';
+    const bgColor = isDark ? colors.background : '#F0F8FF'; // Azure White
     const { signOut } = useAuth();
+    const { language, changeLanguage, languageOptions, t } = useLanguage();
 
     const [autoTrackingEnabled, setAutoTrackingEnabled] = useState(false);
     const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+    const [showLanguagePicker, setShowLanguagePicker] = useState(false);
 
     useEffect(() => {
         loadSettings();
@@ -62,21 +65,36 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
             }
 
             try {
-                const granted = await PermissionsAndroid.request(
+                // Request both READ_SMS and RECEIVE_SMS permissions
+                const smsPermissions = await PermissionsAndroid.requestMultiple([
                     PermissionsAndroid.PERMISSIONS.READ_SMS,
-                    {
-                        title: 'SMS Permission Required',
-                        message: 'FinTracker needs to read your SMS messages to automatically track bank transactions.',
-                        buttonNeutral: 'Ask Me Later',
-                        buttonNegative: 'Cancel',
-                        buttonPositive: 'Grant Permission',
-                    }
-                );
+                    PermissionsAndroid.PERMISSIONS.RECEIVE_SMS,
+                ]);
 
-                if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+                const readGranted = smsPermissions[PermissionsAndroid.PERMISSIONS.READ_SMS] === PermissionsAndroid.RESULTS.GRANTED;
+                const receiveGranted = smsPermissions[PermissionsAndroid.PERMISSIONS.RECEIVE_SMS] === PermissionsAndroid.RESULTS.GRANTED;
+
+                // Also request notification permission on Android 13+ (API 33+)
+                // @ts-ignore - Platform.Version can be number or string
+                if (Platform.Version >= 33) {
+                    await PermissionsAndroid.request(
+                        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+                        {
+                            title: 'Notification Permission',
+                            message: 'FinTracker needs notification permission to show transaction updates.',
+                            buttonPositive: 'Allow',
+                        }
+                    );
+                }
+
+                if (readGranted && receiveGranted) {
                     setAutoTrackingEnabled(true);
                     await AsyncStorage.setItem('autoTrackingEnabled', 'true');
-                } else if (granted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
+                    console.log('SMS permissions granted - auto tracking enabled');
+                } else if (
+                    smsPermissions[PermissionsAndroid.PERMISSIONS.READ_SMS] === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN ||
+                    smsPermissions[PermissionsAndroid.PERMISSIONS.RECEIVE_SMS] === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
+                ) {
                     Alert.alert(
                         'Permission Required',
                         'SMS permission was denied. Please enable it from App Settings.',
@@ -132,7 +150,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
                 <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
                     <Icon name="arrow-left" size={24} color={colors.text} />
                 </Pressable>
-                <Typography variant="h2" weight="semibold">Settings</Typography>
+                <Typography variant="h2" weight="semibold">{t('settings.settings') || 'Settings'}</Typography>
                 <View style={{ width: 40 }} />
             </View>
 
@@ -142,7 +160,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
             >
                 {/* Permissions Section */}
                 <Typography variant="caption" color="secondary" style={styles.sectionLabel}>
-                    PERMISSIONS
+                    {t('settings.permissions')?.toUpperCase() || 'PERMISSIONS'}
                 </Typography>
                 <View style={[styles.card, { backgroundColor: cardBg }]}>
                     <View style={styles.settingItem}>
@@ -151,9 +169,9 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
                                 <Icon name="message-text-outline" size={20} color={colors.textSecondary} />
                             </View>
                             <View style={styles.settingText}>
-                                <Typography variant="body" weight="medium">Auto-Tracking</Typography>
+                                <Typography variant="body" weight="medium">{t('settings.autoTracking') || 'Auto-Tracking'}</Typography>
                                 <Typography variant="caption" color="secondary">
-                                    Read SMS for transactions
+                                    {t('settings.readSms') || 'Read SMS for transactions'}
                                 </Typography>
                             </View>
                         </View>
@@ -165,6 +183,21 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
                         />
                     </View>
 
+                    {/* Privacy Notice */}
+                    {autoTrackingEnabled && (
+                        <View style={[styles.privacyNotice, { backgroundColor: isDark ? 'rgba(34,197,94,0.1)' : 'rgba(34,197,94,0.08)' }]}>
+                            <Icon name="shield-check-outline" size={16} color="#22C55E" style={{ marginRight: 8 }} />
+                            <View style={{ flex: 1 }}>
+                                <Typography variant="caption" weight="medium" style={{ color: '#22C55E' }}>
+                                    {t('settings.privacyTitle') || 'Your privacy is protected'}
+                                </Typography>
+                                <Typography variant="caption" color="secondary" style={{ marginTop: 2, lineHeight: 16 }}>
+                                    {t('settings.privacyMessage') || 'We only read transaction messages. OTPs, passwords, and sensitive codes are never accessed.'}
+                                </Typography>
+                            </View>
+                        </View>
+                    )}
+
                     <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
                     <View style={styles.settingItem}>
@@ -173,7 +206,7 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
                                 <Icon name="bell-outline" size={20} color={colors.textSecondary} />
                             </View>
                             <View style={styles.settingText}>
-                                <Typography variant="body" weight="medium">Notifications</Typography>
+                                <Typography variant="body" weight="medium">{t('settings.notifications') || 'Notifications'}</Typography>
                                 <Typography variant="caption" color="secondary">
                                     Budget alerts & reminders
                                 </Typography>
@@ -198,29 +231,81 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
                             <Icon name="cog-outline" size={20} color={colors.textSecondary} />
                         </View>
                         <View style={styles.settingText}>
-                            <Typography variant="body" weight="medium">System Permissions</Typography>
+                            <Typography variant="body" weight="medium">{t('settings.permissionsTitle') || 'System Permissions'}</Typography>
                             <Typography variant="caption" color="secondary">
-                                Manage all app permissions
+                                {t('settings.permissionsDesc') || 'Manage all app permissions'}
                             </Typography>
                         </View>
                     </View>
                     <Icon name="chevron-right" size={20} color={colors.textMuted} />
                 </Pressable>
 
+                {/* Language Section - Redesigned as Grid */}
+                <Typography variant="caption" color="secondary" style={styles.sectionLabel}>
+                    {t('settings.language')?.toUpperCase() || 'LANGUAGE'}
+                </Typography>
+                <View style={styles.languageGrid}>
+                    {languageOptions.map((lang) => {
+                        const isSelected = language === lang.code;
+                        return (
+                            <Pressable
+                                key={lang.code}
+                                style={[
+                                    styles.langCard,
+                                    {
+                                        backgroundColor: isSelected ? (isDark ? 'rgba(59,130,246,0.2)' : '#EBF5FF') : cardBg,
+                                        borderColor: isSelected ? '#3B82F6' : 'transparent',
+                                        borderWidth: 1
+                                    }
+                                ]}
+                                onPress={() => changeLanguage(lang.code)}
+                            >
+                                <Typography
+                                    variant="h3"
+                                    style={{ marginBottom: 4 }}
+                                >
+                                    {lang.nativeLabel.charAt(0)}
+                                </Typography>
+                                <Typography
+                                    variant="bodySmall"
+                                    weight={isSelected ? 'semibold' : 'regular'}
+                                    style={{ color: isSelected ? '#3B82F6' : colors.text }}
+                                >
+                                    {lang.nativeLabel}
+                                </Typography>
+                                <Typography variant="caption" color="secondary" style={{ fontSize: 10 }}>
+                                    {lang.label}
+                                </Typography>
+                                {isSelected && (
+                                    <View style={styles.checkIcon}>
+                                        <Icon name="check-circle" size={16} color="#3B82F6" />
+                                    </View>
+                                )}
+                            </Pressable>
+                        );
+                    })}
+                </View>
+
                 {/* Account Section */}
                 <Typography variant="caption" color="secondary" style={styles.sectionLabel}>
-                    ACCOUNT
+                    {t('settings.account')?.toUpperCase() || 'ACCOUNT'}
                 </Typography>
                 <View style={[styles.card, { backgroundColor: cardBg }]}>
-                    <Pressable style={styles.settingItem}>
+                    <Pressable
+                        style={({ pressed }) => [
+                            styles.settingItem,
+                            { opacity: pressed ? 0.7 : 1 }
+                        ]}
+                        onPress={() => Alert.alert(t('settings.profile') || 'Profile', "User profile editing coming soon!")}
+                    >
                         <View style={styles.settingInfo}>
                             <View style={[styles.iconBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
                                 <Icon name="account-outline" size={20} color={colors.textSecondary} />
                             </View>
                             <View style={styles.settingText}>
-                                <Typography variant="body" weight="medium">Profile</Typography>
+                                <Typography variant="body" weight="medium">{t('settings.profile') || 'Profile'}</Typography>
                                 <Typography variant="caption" color="secondary">
-                                    View and edit your profile
+                                    {t('settings.editProfile') || 'View and edit your profile'}
                                 </Typography>
                             </View>
                         </View>
@@ -229,15 +314,21 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
 
                     <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-                    <Pressable style={styles.settingItem}>
+                    <Pressable
+                        style={({ pressed }) => [
+                            styles.settingItem,
+                            { opacity: pressed ? 0.7 : 1 }
+                        ]}
+                        onPress={() => Alert.alert(t('settings.privacy') || 'Privacy', "Privacy settings coming soon!")}
+                    >
                         <View style={styles.settingInfo}>
                             <View style={[styles.iconBg, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
                                 <Icon name="shield-check-outline" size={20} color={colors.textSecondary} />
                             </View>
                             <View style={styles.settingText}>
-                                <Typography variant="body" weight="medium">Privacy & Security</Typography>
+                                <Typography variant="body" weight="medium">{t('settings.privacy') || 'Privacy & Security'}</Typography>
                                 <Typography variant="caption" color="secondary">
-                                    Data protection settings
+                                    {t('settings.privacyDesc') || 'Data protection settings'}
                                 </Typography>
                             </View>
                         </View>
@@ -252,9 +343,9 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
                                 <Icon name="logout" size={20} color={colors.error} />
                             </View>
                             <View style={styles.settingText}>
-                                <Typography variant="body" weight="medium">Sign Out</Typography>
+                                <Typography variant="body" weight="medium">{t('settings.signOut') || 'Sign Out'}</Typography>
                                 <Typography variant="caption" color="secondary">
-                                    Log out of your account
+                                    {t('settings.signOutDesc') || 'Log out of your account'}
                                 </Typography>
                             </View>
                         </View>
@@ -335,9 +426,34 @@ const styles = StyleSheet.create({
         height: 1,
         marginLeft: 56,
     },
+    privacyNotice: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        padding: spacing.md,
+        marginHorizontal: spacing.md,
+        marginBottom: spacing.sm,
+        borderRadius: 8,
+    },
     appInfo: {
         marginTop: spacing.xl,
         paddingVertical: spacing.lg,
+    },
+    languageGrid: {
+        flexDirection: 'row',
+        gap: spacing.sm,
+        marginBottom: spacing.md,
+    },
+    langCard: {
+        flex: 1,
+        padding: spacing.md,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    checkIcon: {
+        position: 'absolute',
+        top: 8,
+        right: 8,
     },
 });
 

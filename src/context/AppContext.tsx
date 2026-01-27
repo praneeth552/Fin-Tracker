@@ -1,13 +1,17 @@
 /**
  * App Context - Global State Management
  * ======================================
- * Manages transactions, budgets, and user data with persistence
+ * Manages transactions, budgets, and user data via Spring Boot Backend
  */
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react';
+import { Api } from '../services/api';
+import { GoogleSheetsService } from '../services/GoogleSheetsService';
+import { SMSListenerService } from '../services/SMSListenerService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAvailableMonths, MonthOption } from '../components/MonthDropdown';
 
-// Types
+// Types (Frontend)
 export interface Transaction {
     id: string;
     amount: number;
@@ -16,8 +20,11 @@ export interface Transaction {
     type: 'income' | 'expense';
     date: string;
     merchant?: string;
-    paymentMethod?: 'cash' | 'upi' | 'card' | 'netbanking';
+    paymentMethod?: 'cash' | 'upi' | 'card' | 'netbanking' | 'sms-auto';
     accountId?: string;
+    accountNumber?: string;  // Last 4 digits from SMS-parsed transactions
+    isFromSMS?: boolean;
+    needsReview?: boolean;
 }
 
 export interface BankAccount {
@@ -35,10 +42,12 @@ export interface Budget {
 }
 
 export interface CustomCategory {
-    key: string;
+    id: number;
+    key: string;  // backend uses categoryKey
     label: string;
     icon: string;
     color: string;
+    isDefault: boolean;
 }
 
 export interface UserData {
@@ -48,275 +57,488 @@ export interface UserData {
 }
 
 interface AppContextType {
-    // User
     userData: UserData;
     updateUserData: (data: Partial<UserData>) => void;
 
-    // Transactions
     transactions: Transaction[];
-    addTransaction: (transaction: Omit<Transaction, 'id'>) => void;
-    deleteTransaction: (id: string) => void;
+    filteredTransactions: Transaction[]; // Transactions filtered by selected month
+    addTransaction: (transaction: Omit<Transaction, 'id'>) => Promise<boolean>;
+    deleteTransaction: (id: string) => Promise<void>;
     updateTransaction: (id: string, updates: Partial<Transaction>) => void;
 
-    // Budgets
     budgets: Budget[];
     updateBudget: (category: string, limit: number) => void;
 
-    // Custom Categories
     customCategories: CustomCategory[];
-    addCustomCategory: (category: CustomCategory) => void;
+    addCustomCategory: (category: Omit<CustomCategory, 'id' | 'isDefault'>) => Promise<boolean>;
 
-    // Bank Accounts
     bankAccounts: BankAccount[];
-    addBankAccount: (account: Omit<BankAccount, 'id'>) => void;
-    updateBankAccount: (id: string, updates: Partial<BankAccount>) => void;
-    deleteBankAccount: (id: string) => void;
+    addBankAccount: (account: Omit<BankAccount, 'id'>) => Promise<boolean>;
+    updateBankAccount: (id: string, data: Partial<BankAccount>) => Promise<void>;
+    deleteBankAccount: (id: string) => Promise<void>;
 
-    // Computed
     totalSpent: number;
     totalIncome: number;
+    isLoading: boolean;
+    refreshData: () => Promise<void>;
+    loadDataForMonth: (month: number, year: number) => Promise<void>;
+
+    // Global month selection
+    selectedMonth: number;
+    selectedYear: number;
+    setSelectedMonth: (month: number, year: number) => void;
+
+    // Available months based on transaction data
+    availableMonths: MonthOption[];
+
+    // Detected accounts for approval
+    detectedAccount: { bank: string; accountNumber: string } | null;
+    confirmDetectedAccount: () => Promise<void>;
+    ignoreDetectedAccount: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// Storage keys
-const STORAGE_KEYS = {
-    USER_DATA: '@fintracker_user_data_v2',
-    TRANSACTIONS: '@fintracker_transactions_v2',
-    BUDGETS: '@fintracker_budgets_v2',
-    CUSTOM_CATEGORIES: '@fintracker_custom_categories_v2',
-    BANK_ACCOUNTS: '@fintracker_bank_accounts_v2',
-};
-
-// Default bank accounts
-const defaultBankAccounts: BankAccount[] = [
-    { id: '1', name: 'HDFC Bank', type: 'bank', icon: '🏦', balance: 25000 },
-    { id: '2', name: 'Paytm Wallet', type: 'wallet', icon: '📱', balance: 4500 },
-    { id: '3', name: 'SBI Savings', type: 'bank', icon: '🏦', balance: 12000 },
-    { id: '4', name: 'SBI Credit Card', type: 'card', icon: '💳', balance: -15000 },
-];
-
-// Default data
-const defaultUserData: UserData = {
-    name: 'User',
-    income: 85000,
-    balance: 41500,
-};
-
-const defaultBudgets: Budget[] = [
-    { category: 'food', limit: 8000, spent: 6240 },
-    { category: 'transport', limit: 3000, spent: 1860 },
-    { category: 'shopping', limit: 5000, spent: 3200 },
-    { category: 'bills', limit: 7000, spent: 5500 },
-    { category: 'entertainment', limit: 3000, spent: 2499 },
-    { category: 'health', limit: 2000, spent: 800 },
-    { category: 'misc', limit: 2000, spent: 500 },
-];
-
-const defaultTransactions: Transaction[] = [
-    // Today's Transactions
-    { id: 't1', amount: 150, description: 'Morning Coffee', category: 'food', type: 'expense', date: new Date().toISOString().split('T')[0], merchant: 'Starbucks' },
-    { id: 't2', amount: 450, description: 'Lunch at Subway', category: 'food', type: 'expense', date: new Date().toISOString().split('T')[0], merchant: 'Subway' },
-    { id: 't3', amount: 30, description: 'Bus Ticket', category: 'transport', type: 'expense', date: new Date().toISOString().split('T')[0], merchant: 'BMTC' },
-
-    // Past Transactions
-    { id: '1', amount: 245, description: 'Swiggy Order', category: 'food', type: 'expense', date: new Date(Date.now() - 86400000).toISOString().split('T')[0], merchant: 'Swiggy' },
-    { id: '2', amount: 186, description: 'Uber Trip', category: 'transport', type: 'expense', date: new Date(Date.now() - 86400000).toISOString().split('T')[0], merchant: 'Uber' },
-    { id: '3', amount: 1499, description: 'Netflix Subscription', category: 'entertainment', type: 'expense', date: new Date(Date.now() - 2 * 86400000).toISOString().split('T')[0], merchant: 'Netflix' },
-    { id: '4', amount: 3200, description: 'BigBasket Grocery', category: 'food', type: 'expense', date: new Date(Date.now() - 3 * 86400000).toISOString().split('T')[0], merchant: 'BigBasket' },
-    { id: '5', amount: 85000, description: 'Salary', category: 'income', type: 'income', date: new Date(Date.now() - 5 * 86400000).toISOString().split('T')[0] },
-];
-
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const [userData, setUserData] = useState<UserData>(defaultUserData);
-    const [transactions, setTransactions] = useState<Transaction[]>(defaultTransactions);
-    const [budgets, setBudgets] = useState<Budget[]>(defaultBudgets);
+    // Initial State (Empty until loaded from API)
+    const [userData, setUserData] = useState<UserData>({ name: '', income: 0, balance: 0 });
+    const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [budgets, setBudgets] = useState<Budget[]>([]);
     const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
-    const [bankAccounts, setBankAccounts] = useState<BankAccount[]>(defaultBankAccounts);
-    const [isLoaded, setIsLoaded] = useState(false);
+    const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
 
-    // Load data from storage on mount
-    useEffect(() => {
-        loadData();
-    }, []);
+    const [isLoading, setIsLoading] = useState(true);
+    const [totalSpent, setTotalSpent] = useState(0);
+    const [totalIncome, setTotalIncome] = useState(0);
 
-    // Save data whenever it changes
-    useEffect(() => {
-        if (isLoaded) {
-            saveData();
-        }
-    }, [userData, transactions, budgets, customCategories, bankAccounts, isLoaded]);
+    // Detected Account State
+    const [detectedAccount, setDetectedAccount] = useState<{ bank: string; accountNumber: string } | null>(null);
+
+    // Global month selection state
+    const now = new Date();
+    const [selectedMonth, setSelectedMonthState] = useState(now.getMonth() + 1); // 1-12
+    const [selectedYear, setSelectedYearState] = useState(now.getFullYear());
+
+    // Load data from Backend
+    // Load data from Backend - REMOVED: Called manually from App.tsx after auth
+    // useEffect(() => {
+    //    loadData();
+    // }, []);
 
     const loadData = async () => {
+        setIsLoading(true);
         try {
-            const [userStr, transStr, budgetStr, catStr, accStr] = await Promise.all([
-                AsyncStorage.getItem(STORAGE_KEYS.USER_DATA),
-                AsyncStorage.getItem(STORAGE_KEYS.TRANSACTIONS),
-                AsyncStorage.getItem(STORAGE_KEYS.BUDGETS),
-                AsyncStorage.getItem(STORAGE_KEYS.CUSTOM_CATEGORIES),
-                AsyncStorage.getItem(STORAGE_KEYS.BANK_ACCOUNTS),
-            ]);
+            await GoogleSheetsService.init();
 
-            if (userStr) setUserData(JSON.parse(userStr));
-            if (transStr) setTransactions(JSON.parse(transStr));
-            if (budgetStr) setBudgets(JSON.parse(budgetStr));
-            if (catStr) setCustomCategories(JSON.parse(catStr));
-            if (accStr) setBankAccounts(JSON.parse(accStr));
+            // Sync any pending SMS transactions from background
+            try {
+                await SMSListenerService.syncPendingTransactions();
+            } catch (smsError) {
+                console.log('Failed to sync pending SMS:', smsError);
+            }
+
+
+
+            // Load Transactions
+            const txs = await GoogleSheetsService.getTransactions();
+            const mappedTx: Transaction[] = txs.map((t: any) => ({
+                id: t.id,
+                amount: t.amount,
+                description: t.description || '',
+                category: t.category || 'uncategorized',
+                type: t.type ? t.type.toLowerCase() : 'expense',
+                date: t.date,
+                paymentMethod: t.paymentMethod ? t.paymentMethod.toLowerCase() : 'cash',
+            })).filter((t: any) => t.id && t.id.trim().length > 0);
+
+            // Deduplicate: Keep only the first occurrence of each ID
+            const uniqueTxMap = new Map<string, Transaction>();
+            mappedTx.forEach(item => {
+                if (!uniqueTxMap.has(item.id)) {
+                    uniqueTxMap.set(item.id, item);
+                }
+            });
+            const uniqueTx = Array.from(uniqueTxMap.values());
+
+            const sortedTxs = uniqueTx.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            setTransactions(sortedTxs);
+
+            // Calculate Totals locally
+            let income = 0;
+            let expense = 0;
+            sortedTxs.forEach(t => {
+                if (t.type === 'income') income += t.amount;
+                else expense += t.amount;
+            });
+            setTotalIncome(income);
+            setTotalSpent(expense);
+            setUserData(prev => ({ ...prev, balance: income - expense }));
+
+            // Load Budgets from Sheets and calculate actual spent from transactions
+            const budgetsFromSheets = await GoogleSheetsService.getBudgets();
+            if (budgetsFromSheets.length > 0) {
+                // Calculate actual spent per category from transactions
+                const spentByCategory: { [key: string]: number } = {};
+                sortedTxs.forEach(t => {
+                    if (t.type === 'expense') {
+                        const cat = t.category ? t.category.toLowerCase() : 'uncategorized';
+                        spentByCategory[cat] = (spentByCategory[cat] || 0) + t.amount;
+                    }
+                });
+
+                // Merge calculated spent into budget data
+                const budgetsWithSpent = budgetsFromSheets.map((b: any) => ({
+                    ...b,
+                    spent: b.category ? (spentByCategory[b.category.toLowerCase()] || 0) : 0
+                }));
+                setBudgets(budgetsWithSpent);
+            }
+
+            // Load Categories from Sheets
+            const categoriesFromSheets = await GoogleSheetsService.getCategories();
+            if (categoriesFromSheets.length > 0) {
+                setCustomCategories(categoriesFromSheets.map((c: any) => ({
+                    id: parseInt(c.id) || 0,
+                    key: c.key,
+                    label: c.label,
+                    icon: c.icon,
+                    color: c.color,
+                    isDefault: c.isDefault
+                })));
+            }
+
+            // Load Bank Accounts from Sheets
+            const accountsFromSheets = await GoogleSheetsService.getBankAccounts();
+            setBankAccounts(accountsFromSheets);
+
+            // Check for new detected accounts from SMS
+            checkDetectedAccounts(accountsFromSheets);
+
+            // Load User Name from Google Sign-In data stored in AsyncStorage
+            const googleUserData = await AsyncStorage.getItem('googleUser');
+            if (googleUserData) {
+                const googleUser = JSON.parse(googleUserData);
+                const displayName = googleUser?.data?.user?.name || googleUser?.user?.name || googleUser?.name || 'User';
+                setUserData(prev => ({ ...prev, name: displayName }));
+            }
+
         } catch (error) {
-            console.error('Error loading data:', error);
+            console.error('Failed to load data from Sheets:', error);
+        } finally {
+            setIsLoading(false);
         }
-        setIsLoaded(true);
     };
 
-    const saveData = async () => {
+    // --- Detected Accounts Logic ---
+    const checkDetectedAccounts = async (currentAccounts: BankAccount[]) => {
         try {
-            await Promise.all([
-                AsyncStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userData)),
-                AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(transactions)),
-                AsyncStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(budgets)),
-                AsyncStorage.setItem(STORAGE_KEYS.CUSTOM_CATEGORIES, JSON.stringify(customCategories)),
-                AsyncStorage.setItem(STORAGE_KEYS.BANK_ACCOUNTS, JSON.stringify(bankAccounts)),
+            const DETECTED_ACCOUNTS_KEY = '@fintracker_detected_accounts';
+            const IGNORED_ACCOUNTS_KEY = '@fintracker_ignored_accounts';
+
+            const [detectedJson, ignoredJson] = await Promise.all([
+                AsyncStorage.getItem(DETECTED_ACCOUNTS_KEY),
+                AsyncStorage.getItem(IGNORED_ACCOUNTS_KEY)
             ]);
+
+            const detected = detectedJson ? JSON.parse(detectedJson) : [];
+            const ignored = ignoredJson ? JSON.parse(ignoredJson) : [];
+
+            if (detected.length === 0) return;
+
+            // Find first detected account that is NOT in current accounts AND NOT ignored
+            const newAccount = detected.find((d: any) => {
+                const exists = currentAccounts.some(a =>
+                    a.name.toLowerCase().includes(d.bank.toLowerCase()) ||
+                    (a.type === 'bank' && a.name.includes(d.accountNumber)) // Weak check, but something
+                );
+
+                const isIgnored = ignored.some((i: any) =>
+                    i.bank === d.bank && i.accountNumber === d.accountNumber
+                );
+
+                return !exists && !isIgnored;
+            });
+
+            if (newAccount) {
+                setDetectedAccount(newAccount);
+            }
         } catch (error) {
-            console.error('Error saving data:', error);
+            console.error('Check Detected Accounts Failed:', error);
         }
     };
 
-    const updateUserData = (data: Partial<UserData>) => {
+    const confirmDetectedAccount = async () => {
+        if (!detectedAccount) return;
+
+        try {
+            // Add to wallet
+            await addBankAccount({
+                name: `${detectedAccount.bank} - ${detectedAccount.accountNumber}`,
+                type: 'bank',
+                icon: 'bank',
+                balance: 0 // User can update later
+            });
+
+            // Remove from detected list
+            const DETECTED_ACCOUNTS_KEY = '@fintracker_detected_accounts';
+            const existing = await AsyncStorage.getItem(DETECTED_ACCOUNTS_KEY);
+            let accounts = existing ? JSON.parse(existing) : [];
+            accounts = accounts.filter((a: any) =>
+                !(a.bank === detectedAccount.bank && a.accountNumber === detectedAccount.accountNumber)
+            );
+            await AsyncStorage.setItem(DETECTED_ACCOUNTS_KEY, JSON.stringify(accounts));
+
+            setDetectedAccount(null);
+        } catch (error) {
+            console.error('Confirm Account Failed:', error);
+        }
+    };
+
+    const ignoreDetectedAccount = async () => {
+        if (!detectedAccount) return;
+
+        try {
+            // Add to ignored list
+            const IGNORED_ACCOUNTS_KEY = '@fintracker_ignored_accounts';
+            const existing = await AsyncStorage.getItem(IGNORED_ACCOUNTS_KEY);
+            const ignored = existing ? JSON.parse(existing) : [];
+            ignored.push(detectedAccount);
+            await AsyncStorage.setItem(IGNORED_ACCOUNTS_KEY, JSON.stringify(ignored));
+
+            // Remove from detected list to prevent re-prompt
+            const DETECTED_ACCOUNTS_KEY = '@fintracker_detected_accounts';
+            const detectedJson = await AsyncStorage.getItem(DETECTED_ACCOUNTS_KEY);
+            let accounts = detectedJson ? JSON.parse(detectedJson) : [];
+            accounts = accounts.filter((a: any) =>
+                !(a.bank === detectedAccount.bank && a.accountNumber === detectedAccount.accountNumber)
+            );
+            await AsyncStorage.setItem(DETECTED_ACCOUNTS_KEY, JSON.stringify(accounts));
+
+            setDetectedAccount(null);
+
+            // Check for next one
+            checkDetectedAccounts(bankAccounts);
+        } catch (error) {
+            console.error('Ignore Account Failed:', error);
+        }
+    };
+
+    // --- Actions ---
+
+    // Update user data locally (Backend removed)
+    const updateUserData = async (data: Partial<UserData>) => {
         setUserData(prev => ({ ...prev, ...data }));
     };
 
-    const addTransaction = (transaction: Omit<Transaction, 'id'>) => {
-        const newTransaction: Transaction = {
-            ...transaction,
-            id: Date.now().toString(),
-            date: transaction.date || new Date().toISOString().split('T')[0],
-        };
+    const addTransaction = async (transaction: Omit<Transaction, 'id'>) => {
+        try {
+            // Optimistic update
+            const tempId = Date.now().toString();
 
-        setTransactions(prev => [newTransaction, ...prev]);
+            // Sheets Call
+            await GoogleSheetsService.createTransaction({
+                id: tempId,
+                amount: transaction.amount,
+                type: transaction.type.toUpperCase() as any,
+                category: transaction.category,
+                description: transaction.description,
+                date: transaction.date,
+                paymentMethod: transaction.paymentMethod?.toUpperCase() || 'CASH'
+            });
 
-        // Update budget spent if expense
-        if (transaction.type === 'expense') {
-            setBudgets(prev => prev.map(b =>
-                b.category === transaction.category
-                    ? { ...b, spent: b.spent + transaction.amount }
-                    : b
-            ));
-            // Update balance
-            setUserData(prev => ({ ...prev, balance: prev.balance - transaction.amount }));
+            // No reload needed - rely on optimistic update
+            // Wait, we didn't add it to state yet! The original code was relying on loadData to add it!
+            // I need to add it to state here manually!
+            const newTx: Transaction = {
+                id: tempId, // WARNING: If backend generates a different ID, this will desync. But we are sending ID.
+                ...transaction,
+                category: transaction.category || 'uncategorized', // Default
+            };
+            setTransactions(prev => [newTx, ...prev]);
 
-            // Update Bank Account
-            if (transaction.accountId) {
-                setBankAccounts(prev => prev.map(acc =>
-                    acc.id === transaction.accountId
-                        ? { ...acc, balance: acc.balance - transaction.amount }
-                        : acc
-                ));
-            }
-        } else {
-            // Income
-            setUserData(prev => ({
-                ...prev,
-                balance: prev.balance + transaction.amount,
-                income: prev.income + transaction.amount
-            }));
-
-            // Update Bank Account
-            if (transaction.accountId) {
-                setBankAccounts(prev => prev.map(acc =>
-                    acc.id === transaction.accountId
-                        ? { ...acc, balance: acc.balance + transaction.amount }
-                        : acc
-                ));
-            }
+            return true;
+        } catch (error) {
+            console.error('Add Transaction Failed:', error);
+            await loadData(); // Revert on error
+            return false;
         }
     };
 
-    const deleteTransaction = (id: string) => {
-        const tx = transactions.find(t => t.id === id);
-        if (tx) {
-            setTransactions(prev => prev.filter(t => t.id !== id));
-
-            if (tx.type === 'expense') {
-                setBudgets(prev => prev.map(b =>
-                    b.category === tx.category
-                        ? { ...b, spent: Math.max(0, b.spent - tx.amount) }
-                        : b
-                ));
-                setUserData(prev => ({ ...prev, balance: prev.balance + tx.amount }));
-
-                // Reverse Bank Account effect (Credit back)
-                if (tx.accountId) {
-                    setBankAccounts(prev => prev.map(acc =>
-                        acc.id === tx.accountId
-                            ? { ...acc, balance: acc.balance + tx.amount }
-                            : acc
-                    ));
-                }
-            } else {
-                setUserData(prev => ({
-                    ...prev,
-                    balance: prev.balance - tx.amount,
-                    income: prev.income - tx.amount
-                }));
-
-                // Reverse Bank Account effect (Debit back)
-                if (tx.accountId) {
-                    setBankAccounts(prev => prev.map(acc =>
-                        acc.id === tx.accountId
-                            ? { ...acc, balance: acc.balance - tx.amount }
-                            : acc
-                    ));
-                }
-            }
+    const deleteTransaction = async (id: string) => {
+        try {
+            setTransactions(prev => prev.filter(t => t.id !== id)); // Optimistic
+            await GoogleSheetsService.deleteTransaction(id);
+            // No reload needed
+        } catch (error) {
+            console.error('Delete Transaction Failed:', error);
+            await loadData(); // Revert on error
         }
     };
 
-    const updateTransaction = (id: string, updates: Partial<Transaction>) => {
-        setTransactions(prev => prev.map(t =>
-            t.id === id ? { ...t, ...updates } : t
-        ));
+    const updateTransaction = async (id: string, updates: Partial<Transaction>) => {
+        try {
+            // Optimistic Update
+            setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+
+            // Google Sheets Call
+            await GoogleSheetsService.updateTransaction(id, {
+                ...updates,
+                type: updates.type ? updates.type.toUpperCase() as any : undefined,
+                paymentMethod: updates.paymentMethod ? updates.paymentMethod.toUpperCase() : undefined
+            });
+
+            // No reload needed
+        } catch (error) {
+            console.error('Update Transaction Failed:', error);
+            await loadData(); // Revert on error
+        }
     };
 
-    const updateBudget = (category: string, limit: number) => {
-        setBudgets(prev => prev.map(b =>
-            b.category === category ? { ...b, limit } : b
-        ));
+    const updateBudget = async (category: string, limit: number) => {
+        try {
+            // Optimistic
+            setBudgets(prev => {
+                const existing = prev.find(b => b.category === category);
+                if (existing) {
+                    return prev.map(b => b.category === category ? { ...b, limit } : b);
+                } else {
+                    return [...prev, { category, limit, spent: 0 }];
+                }
+            });
+
+            await GoogleSheetsService.updateBudget(category, limit);
+            await loadData();
+        } catch (error) {
+            console.error('Update Budget Failed:', error);
+            await loadData();
+        }
     };
 
-    const addCustomCategory = (category: CustomCategory) => {
-        setCustomCategories(prev => [...prev, category]);
-        // Also add a budget entry for the new category
-        setBudgets(prev => [...prev, { category: category.key, limit: 5000, spent: 0 }]);
+    const addCustomCategory = async (category: Omit<CustomCategory, 'id' | 'isDefault'>) => {
+        try {
+            const newId = Date.now(); // Use number for local ID
+
+            // Optimistic Update
+            setCustomCategories(prev => [...prev, {
+                id: newId,
+                key: category.key,
+                label: category.label,
+                icon: category.icon,
+                color: category.color,
+                isDefault: false
+            }]);
+
+            // API Call
+            await GoogleSheetsService.appendRow('Categories', [
+                newId.toString(), category.key, category.label, category.icon, category.color, 'false'
+            ]);
+
+            // Background sync (don't await to block UI)
+            loadData();
+            return true;
+        } catch (error) {
+            console.error('Add Category Failed:', error);
+            await loadData(); // Revert on error
+            return false;
+        }
     };
 
-    // Bank Accounts handlers
-    const addBankAccount = (account: Omit<BankAccount, 'id'>) => {
-        const newAccount = { ...account, id: Date.now().toString() };
-        setBankAccounts(prev => [...prev, newAccount]);
+    const addBankAccount = async (account: Omit<BankAccount, 'id'>) => {
+        try {
+            await GoogleSheetsService.createBankAccount({
+                name: account.name,
+                type: account.type,
+                icon: account.icon,
+                balance: account.balance
+            });
+            await loadData();
+            return true;
+        } catch (error) {
+            console.error('Add Bank Account Failed:', error);
+            return false;
+        }
     };
 
-    const updateBankAccount = (id: string, updates: Partial<BankAccount>) => {
-        setBankAccounts(prev => prev.map(acc => acc.id === id ? { ...acc, ...updates } : acc));
+    const updateBankAccount = async (id: string, data: Partial<BankAccount>) => {
+        try {
+            // Optimistic
+            setBankAccounts(prev => prev.map(a => a.id === id ? { ...a, ...data } : a));
+
+            await GoogleSheetsService.updateBankAccount(id, data);
+            // No reload needed, optimistic update is sufficient
+        } catch (error) {
+            console.error('Update Bank Account Failed:', error);
+            await loadData();
+        }
     };
 
-    const deleteBankAccount = (id: string) => {
-        setBankAccounts(prev => prev.filter(acc => acc.id !== id));
+    const deleteBankAccount = async (id: string) => {
+        try {
+            setBankAccounts(prev => prev.filter(a => a.id !== id));
+            await GoogleSheetsService.deleteBankAccount(id);
+            // No reload needed, optimistic update is sufficient
+        } catch (error) {
+            console.error('Delete Bank Account Failed:', error);
+            await loadData();
+        }
     };
 
-    const totalSpent = transactions
-        .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + t.amount, 0);
+    // Recalculate Totals whenever transactions or selected month/year changes
+    useEffect(() => {
+        // 1. Calculate Monthly Totals (for Dashboard)
+        const monthFiltered = transactions.filter(t => {
+            const d = new Date(t.date);
+            return d.getMonth() + 1 === selectedMonth && d.getFullYear() === selectedYear;
+        });
 
-    const totalIncome = transactions
-        .filter(t => t.type === 'income')
-        .reduce((sum, t) => sum + t.amount, 0);
+        let monthIncome = 0;
+        let monthExpense = 0;
+        monthFiltered.forEach(t => {
+            if (t.type === 'income') monthIncome += t.amount;
+            else monthExpense += t.amount;
+        });
+
+        setTotalIncome(monthIncome);
+        setTotalSpent(monthExpense);
+
+        // 2. Calculate All-Time Balance (for UserData)
+        let allIncome = 0;
+        let allExpense = 0;
+        transactions.forEach(t => {
+            if (t.type === 'income') allIncome += t.amount;
+            else allExpense += t.amount;
+        });
+
+        setUserData(prev => ({ ...prev, balance: allIncome - allExpense }));
+
+    }, [transactions, selectedMonth, selectedYear]);
+
+    // Set selected month
+    const setSelectedMonth = (month: number, year: number) => {
+        setSelectedMonthState(month);
+        setSelectedYearState(year);
+        // useEffect will handle data reload/recalc
+    };
+
+    // Compute filtered transactions for selected month
+    const filteredTransactions = React.useMemo(() => {
+        return transactions.filter(t => {
+            const txDate = new Date(t.date);
+            return txDate.getMonth() + 1 === selectedMonth && txDate.getFullYear() === selectedYear;
+        });
+    }, [transactions, selectedMonth, selectedYear]);
+
+    // Compute available months from all transactions
+    const availableMonths = useMemo(() => {
+        return getAvailableMonths(transactions);
+    }, [transactions]);
 
     return (
         <AppContext.Provider value={{
             userData,
             updateUserData,
             transactions,
+            filteredTransactions,
             addTransaction,
             deleteTransaction,
             updateTransaction,
@@ -330,6 +552,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             deleteBankAccount,
             totalSpent,
             totalIncome,
+            isLoading,
+            refreshData: loadData,
+            loadDataForMonth: async () => { }, // Deprecated/No-op as useEffect handles it
+            selectedMonth,
+            selectedYear,
+            setSelectedMonth,
+            availableMonths,
+            detectedAccount,
+            confirmDetectedAccount,
+            ignoreDetectedAccount,
         }}>
             {children}
         </AppContext.Provider>

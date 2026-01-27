@@ -6,9 +6,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { View, StyleSheet, useColorScheme, Animated, Pressable, Modal, Easing } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import Svg, { Circle, G } from 'react-native-svg';
 import { Typography } from '../common';
 import { themes, spacing } from '../../theme';
+import { useLanguage } from '../../context/LanguageContext';
 
 const CHART_SIZE = 140;
 const STROKE_WIDTH = 24;
@@ -20,6 +22,7 @@ interface CategoryData {
     amount: number;
     color: string;
     key: string;
+    icon: string;
 }
 
 interface CategoryPieChartProps {
@@ -94,24 +97,70 @@ const AnimatedSegment: React.FC<{
 // Create animated Circle
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
+import { useApp } from '../../context/AppContext';
+import { useCategories } from '../../hooks/useCategories';
+
 export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({ isRefreshing = false }) => {
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const colors = isDark ? themes.dark : themes.light;
+    const { filteredTransactions } = useApp();
+    const { t } = useLanguage();
+    const navigation = useNavigation<any>();
+    const { getCategoryColor, getCategoryLabel, getCategoryIcon } = useCategories();
 
     const [selectedCategory, setSelectedCategory] = useState<CategoryData | null>(null);
     const scaleAnim = useRef(new Animated.Value(0.95)).current;
     const opacityAnim = useRef(new Animated.Value(0)).current;
 
-    // Distinct colors for each category
-    const data: CategoryData[] = [
-        { key: 'food', name: 'Food & Dining', amount: 6240, color: '#3B82F6' },        // Blue
-        { key: 'transport', name: 'Transport', amount: 1860, color: '#8B5CF6' },       // Purple
-        { key: 'shopping', name: 'Shopping', amount: 3200, color: '#EC4899' },         // Pink
-        { key: 'bills', name: 'Bills & Utilities', amount: 5500, color: '#10B981' },   // Emerald
-        { key: 'entertainment', name: 'Entertainment', amount: 2499, color: '#F59E0B' }, // Amber
-        { key: 'misc', name: 'Miscellaneous', amount: 800, color: '#6B7280' },         // Gray
-    ];
+    // Calculate Data from Transactions
+    const data: CategoryData[] = React.useMemo(() => {
+        const categoryMap = new Map<string, number>();
+
+        // Filter only expenses from filtered transactions
+        const expenses = filteredTransactions.filter(t => t.type === 'expense');
+
+        if (expenses.length === 0) return [];
+
+        expenses.forEach(t => {
+            const cat = t.category.toLowerCase();
+            const amount = t.amount;
+            categoryMap.set(cat, (categoryMap.get(cat) || 0) + amount);
+        });
+
+        // Sort by amount
+        const sorted = Array.from(categoryMap.entries())
+            .map(([key, amount]) => {
+                return {
+                    key,
+                    name: getCategoryLabel(key),
+                    amount,
+                    color: getCategoryColor(key),
+                    icon: getCategoryIcon(key)
+                };
+            })
+            .sort((a, b) => b.amount - a.amount);
+
+        // Group into Other if more than 5 items
+        if (sorted.length > 5) {
+            const top5 = sorted.slice(0, 5);
+            const otherItems = sorted.slice(5);
+            const otherAmount = otherItems.reduce((sum, item) => sum + item.amount, 0);
+
+            if (otherAmount > 0) {
+                top5.push({
+                    key: 'other_grouped',
+                    name: t('categories.other') || 'Other',
+                    amount: otherAmount,
+                    color: getCategoryColor('misc'),
+                    icon: getCategoryIcon('misc') // or 'pie-chart' emoji? '📌' from misc is fine
+                });
+            }
+            return top5;
+        }
+
+        return sorted;
+    }, [filteredTransactions, t]);
 
     const total = data.reduce((sum, item) => sum + item.amount, 0);
 
@@ -131,6 +180,15 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({ isRefreshing
             }),
         ]).start();
     }, []);
+
+    // Returns empty view or placeholder if no data
+    if (total === 0) {
+        return (
+            <View style={[styles.container, { justifyContent: 'center', height: 160 }]}>
+                <Typography variant="body" color="secondary">No spending data available</Typography>
+            </View>
+        );
+    }
 
     // Calculate segments
     let cumulativePercentage = 0;
@@ -183,7 +241,7 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({ isRefreshing
                 </Svg>
                 {/* Center text */}
                 <View style={styles.centerText}>
-                    <Typography variant="caption" color="secondary">Total</Typography>
+                    <Typography variant="caption" color="secondary">{t('common.total') || 'Total'}</Typography>
                     <Typography variant="lg" weight="bold">₹{(total / 1000).toFixed(1)}k</Typography>
                 </View>
             </View>
@@ -204,6 +262,10 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({ isRefreshing
                         onPress={() => handleCategoryPress(item)}
                     >
                         <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+                        {/* Emoji Icon */}
+                        <Typography variant="body" style={{ marginRight: 6, fontSize: 16 }}>
+                            {item.icon}
+                        </Typography>
                         <View style={styles.legendText}>
                             <Typography variant="caption" color="secondary">{item.name}</Typography>
                             <Typography variant="bodySmall" weight="medium">
@@ -243,16 +305,23 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({ isRefreshing
                                     ₹{selectedCategory.amount.toLocaleString()}
                                 </Typography>
                                 <Typography variant="body" color="secondary" style={{ marginTop: spacing.xs }}>
-                                    {Math.round((selectedCategory.amount / total) * 100)}% of total spending
+                                    {Math.round((selectedCategory.amount / total) * 100)}% {t('stats.totalSpent').toLowerCase()}
                                 </Typography>
-                                <Pressable
-                                    style={[styles.modalBtn, { backgroundColor: selectedCategory.color }]}
-                                    onPress={() => setSelectedCategory(null)}
-                                >
-                                    <Typography variant="body" weight="medium" style={{ color: '#FFFFFF' }}>
-                                        View Transactions
-                                    </Typography>
-                                </Pressable>
+                                {selectedCategory.amount > 0 && selectedCategory.key !== 'other_grouped' && (
+                                    <Pressable
+                                        style={[styles.modalBtn, { backgroundColor: selectedCategory.color }]}
+                                        onPress={() => {
+                                            const categoryKey = selectedCategory.key;
+                                            setSelectedCategory(null);
+                                            // Navigate to Transactions screen with filter
+                                            navigation.navigate('Transactions', { filterCategory: categoryKey });
+                                        }}
+                                    >
+                                        <Typography variant="body" weight="medium" style={{ color: '#FFFFFF' }}>
+                                            {t('common.viewTransactions') || 'View Transactions'}
+                                        </Typography>
+                                    </Pressable>
+                                )}
                             </>
                         )}
                     </View>

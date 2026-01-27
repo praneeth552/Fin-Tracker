@@ -73,3 +73,11 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# Backend (for separate development - remove this line when ready to share)
+# Your friend can work on their own backend independently
+# # backend/
+
+
+
+

@@ -4,23 +4,25 @@
  * Combined view for bank accounts and category budgets
  */
 
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Animated, LayoutAnimation, Dimensions, Modal, TextInput, useColorScheme, Platform, Alert, KeyboardAvoidingView } from 'react-native';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Animated, LayoutAnimation, Dimensions, Modal, TextInput, useColorScheme, Platform, Alert, KeyboardAvoidingView, ActivityIndicator, FlatList, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import LinearGradient from 'react-native-linear-gradient';
 import { Typography } from '../../components/common';
-import { useApp, BankAccount } from '../../context/AppContext';
+import { useApp, BankAccount, Transaction } from '../../context/AppContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { themes, spacing } from '../../theme';
 
-const categoryInfo: Record<string, { label: string; icon: string; color: string }> = {
-    food: { label: 'Food & Dining', icon: '🍽️', color: '#3B82F6' },
-    transport: { label: 'Transportation', icon: '🚗', color: '#8B5CF6' },
-    shopping: { label: 'Shopping', icon: '🛒', color: '#EC4899' },
-    bills: { label: 'Bills & Utilities', icon: '📄', color: '#10B981' },
-    entertainment: { label: 'Entertainment', icon: '🎬', color: '#F59E0B' },
-    health: { label: 'Health', icon: '💊', color: '#EF4444' },
-    misc: { label: 'Miscellaneous', icon: '📌', color: '#6B7280' },
+const categoryInfo: Record<string, { icon: string; color: string }> = {
+    food: { icon: '🍽️', color: '#3B82F6' },
+    transport: { icon: '🚗', color: '#8B5CF6' },
+    shopping: { icon: '🛒', color: '#EC4899' },
+    bills: { icon: '📄', color: '#10B981' },
+    entertainment: { icon: '🎬', color: '#F59E0B' },
+    health: { icon: '💊', color: '#EF4444' },
+    misc: { icon: '📌', color: '#6B7280' },
 };
 
 // Budget Edit Modal
@@ -33,12 +35,14 @@ const BudgetEditModal: React.FC<{
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const colors = isDark ? themes.dark : themes.light;
+    const { t } = useLanguage();
     const [value, setValue] = useState(budget?.limit || 5000);
     const info = budget ? categoryInfo[budget.category] : null;
+    const categoryLabel = budget ? (t(`categories.${budget.category}`) || budget.category) : '';
 
     useEffect(() => {
         if (budget) setValue(budget.limit);
-    }, [budget]);
+    }, [budget, visible]);
 
     const handleSave = () => {
         if (budget) onSave(budget.category, value);
@@ -60,7 +64,7 @@ const BudgetEditModal: React.FC<{
                                         <Typography variant="h3">{info.icon}</Typography>
                                     </View>
                                     <Typography variant="body" weight="semibold" style={{ marginTop: spacing.sm }}>
-                                        {info.label}
+                                        {categoryLabel}
                                     </Typography>
                                 </View>
 
@@ -82,7 +86,7 @@ const BudgetEditModal: React.FC<{
                                     />
                                 </Pressable>
                                 <Typography variant="caption" color="secondary" align="center">
-                                    tap to edit • monthly budget limit
+                                    {t('wallet.tapToEdit')} • {t('budget.monthlyLimit')}
                                 </Typography>
 
                                 <Slider
@@ -104,7 +108,7 @@ const BudgetEditModal: React.FC<{
 
                                 <View style={[styles.progressBox, { backgroundColor: isDark ? '#1A1A1D' : '#F4F4F5' }]}>
                                     <View style={styles.progressRow}>
-                                        <Typography variant="caption" color="secondary">Spent this month</Typography>
+                                        <Typography variant="caption" color="secondary">{t('budget.spentThisMonth')}</Typography>
                                         <Typography variant="bodySmall" weight="semibold" style={{ color: isOver ? '#EF4444' : colors.text }}>
                                             ₹{budget.spent.toLocaleString()}
                                         </Typography>
@@ -113,16 +117,16 @@ const BudgetEditModal: React.FC<{
                                         <View style={[styles.progressFill, { width: `${percentage}%`, backgroundColor: isOver ? '#EF4444' : info.color }]} />
                                     </View>
                                     <Typography variant="caption" style={{ color: isOver ? '#EF4444' : '#22C55E', marginTop: 4 }}>
-                                        {isOver ? `₹${(budget.spent - value).toLocaleString()} over budget` : `₹${(value - budget.spent).toLocaleString()} remaining`}
+                                        {isOver ? `₹${(budget.spent - value).toLocaleString()} ${t('budget.over')}` : `₹${(value - budget.spent).toLocaleString()} ${t('budget.left')}`}
                                     </Typography>
                                 </View>
 
                                 <View style={styles.modalButtons}>
                                     <Pressable style={[styles.modalBtn, { borderColor: colors.border, borderWidth: 1 }]} onPress={onClose}>
-                                        <Typography variant="body" color="secondary">Cancel</Typography>
+                                        <Typography variant="body" color="secondary">{t('wallet.cancel')}</Typography>
                                     </Pressable>
                                     <Pressable style={[styles.modalBtn, { backgroundColor: info.color }]} onPress={handleSave}>
-                                        <Typography variant="body" weight="semibold" style={{ color: '#FFF' }}>Save</Typography>
+                                        <Typography variant="body" weight="semibold" style={{ color: '#FFF' }}>{t('wallet.save')}</Typography>
                                     </Pressable>
                                 </View>
                             </>
@@ -179,7 +183,7 @@ const accountIcons = ['🏦', '💳', '📱', '💵', '🪙', '💰', '🏧', '�
 const AddAccountModal: React.FC<{
     visible: boolean;
     onClose: () => void;
-    onAdd: (account: Omit<BankAccount, 'id'>) => void;
+    onAdd: (account: Omit<BankAccount, 'id'>) => Promise<boolean>;
     onUpdate?: (id: string, data: Partial<BankAccount>) => void;
     onDelete?: (id: string) => void;
     editingAccount?: BankAccount | null;
@@ -187,11 +191,14 @@ const AddAccountModal: React.FC<{
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const colors = isDark ? themes.dark : themes.light;
+    const { t } = useLanguage();
 
     const [name, setName] = useState('');
     const [type, setType] = useState<'bank' | 'wallet' | 'card' | 'cash'>('bank');
     const [balance, setBalance] = useState('');
     const [icon, setIcon] = useState('🏦');
+
+    const [loading, setLoading] = useState(false);
 
     // Internal state for managing exit animation
     const [showModal, setShowModal] = useState(visible);
@@ -200,6 +207,7 @@ const AddAccountModal: React.FC<{
 
     useEffect(() => {
         if (visible) {
+            setLoading(false); // Reset loading state on open
             setShowModal(true);
             Animated.parallel([
                 Animated.timing(backdropAnim, {
@@ -248,38 +256,52 @@ const AddAccountModal: React.FC<{
         }
     }, [visible, editingAccount]);
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (name.trim() && balance) {
             const numericBalance = parseFloat(balance) || 0;
+            setLoading(true);
 
-            if (editingAccount && onUpdate) {
-                onUpdate(editingAccount.id, {
-                    name: name.trim(),
-                    type,
-                    icon,
-                    balance: numericBalance,
-                });
-            } else {
-                onAdd({
-                    name: name.trim(),
-                    type,
-                    icon,
-                    balance: numericBalance,
-                });
+            try {
+                if (editingAccount && onUpdate) {
+                    onUpdate(editingAccount.id, {
+                        name: name.trim(),
+                        type,
+                        icon,
+                        balance: numericBalance,
+                    });
+                    onClose();
+                } else {
+                    const success = await onAdd({
+                        name: name.trim(),
+                        type,
+                        icon,
+                        balance: numericBalance,
+                    });
+
+                    if (success) {
+                        onClose();
+                    } else {
+                        Alert.alert("Error", "Failed to add account. Please check your connection.");
+                    }
+                }
+            } catch (error) {
+                console.error('Account Action Failed:', error);
+                Alert.alert("Error", "Something went wrong.");
+            } finally {
+                setLoading(false);
             }
-            onClose();
         }
     };
 
     const handleDelete = () => {
         if (editingAccount && onDelete) {
             Alert.alert(
-                "Delete Account",
-                "Are you sure you want to delete this account?",
+                t('wallet.deleteAccount'),
+                t('wallet.deleteConfirm'),
                 [
-                    { text: "Cancel", style: "cancel" },
+                    { text: t('common.cancel'), style: "cancel" },
                     {
-                        text: "Delete",
+                        text: t('common.delete'),
                         style: "destructive",
                         onPress: () => {
                             onDelete(editingAccount.id);
@@ -318,7 +340,7 @@ const AddAccountModal: React.FC<{
                     ]}
                 >
                     <View style={styles.modalHeader}>
-                        <Typography variant="h3" weight="semibold">{editingAccount ? 'Edit Account' : 'Add Account'}</Typography>
+                        <Typography variant="h3" weight="semibold">{editingAccount ? t('wallet.editAccount') : t('wallet.addAccount')}</Typography>
                         <View style={{ flexDirection: 'row', gap: 16, alignItems: 'center' }}>
                             {editingAccount && (
                                 <Pressable onPress={handleDelete} style={{ padding: 4 }}>
@@ -333,7 +355,7 @@ const AddAccountModal: React.FC<{
 
                     {/* Account Name */}
                     <View style={{ marginBottom: spacing.md }}>
-                        <Typography variant="caption" weight="medium" color="secondary" style={{ marginBottom: 6, letterSpacing: 0.5 }}>ACCOUNT NAME</Typography>
+                        <Typography variant="caption" weight="medium" color="secondary" style={{ marginBottom: 6, letterSpacing: 0.5 }}>{t('wallet.accountName')?.toUpperCase()}</Typography>
                         <TextInput
                             style={[styles.input, { backgroundColor: inputBg, color: colors.text }]}
                             value={name}
@@ -346,25 +368,25 @@ const AddAccountModal: React.FC<{
 
                     {/* Account Type */}
                     <View style={{ marginBottom: spacing.md }}>
-                        <Typography variant="caption" weight="medium" color="secondary" style={{ marginBottom: 6, letterSpacing: 0.5 }}>ACCOUNT TYPE</Typography>
+                        <Typography variant="caption" weight="medium" color="secondary" style={{ marginBottom: 6, letterSpacing: 0.5 }}>{t('wallet.accountType')?.toUpperCase()}</Typography>
                         <View style={styles.typeGrid}>
-                            {accountTypes.map((t) => (
+                            {accountTypes.map((tKey) => (
                                 <Pressable
-                                    key={t.key}
+                                    key={tKey.key}
                                     style={[
                                         styles.typeOption,
                                         {
-                                            backgroundColor: type === t.key ? (isDark ? '#27272A' : '#F4F4F5') : 'transparent',
-                                            borderColor: type === t.key ? '#3B82F6' : (isDark ? '#27272A' : '#E4E4E7')
+                                            backgroundColor: type === tKey.key ? (isDark ? '#27272A' : '#F4F4F5') : 'transparent',
+                                            borderColor: type === tKey.key ? '#3B82F6' : (isDark ? '#27272A' : '#E4E4E7')
                                         }
                                     ]}
-                                    onPress={() => { setType(t.key as any); setIcon(t.icon); }}
+                                    onPress={() => { setType(tKey.key as any); setIcon(tKey.icon); }}
                                 >
                                     <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: isDark ? '#000' : '#FFF', justifyContent: 'center', alignItems: 'center', marginBottom: 4 }}>
-                                        <Typography variant="lg">{t.icon}</Typography>
+                                        <Typography variant="lg">{tKey.icon}</Typography>
                                     </View>
-                                    <Typography variant="caption" weight={type === t.key ? 'semibold' : 'medium'} style={{ color: type === t.key ? colors.text : colors.textSecondary }}>{t.label}</Typography>
-                                    {type === t.key && <View style={styles.selectedCheck}><Icon name="check" size={10} color="#FFF" /></View>}
+                                    <Typography variant="caption" weight={type === tKey.key ? 'semibold' : 'medium'} style={{ color: type === tKey.key ? colors.text : colors.textSecondary }}>{t(`wallet.${tKey.key}`) || tKey.label}</Typography>
+                                    {type === tKey.key && <View style={styles.selectedCheck}><Icon name="check" size={10} color="#FFF" /></View>}
                                 </Pressable>
                             ))}
                         </View>
@@ -372,7 +394,7 @@ const AddAccountModal: React.FC<{
 
                     {/* Opening Balance */}
                     <View style={{ marginBottom: spacing.lg }}>
-                        <Typography variant="caption" weight="medium" color="secondary" style={{ marginBottom: 6, letterSpacing: 0.5 }}>OPENING BALANCE</Typography>
+                        <Typography variant="caption" weight="medium" color="secondary" style={{ marginBottom: 6, letterSpacing: 0.5 }}>{t('wallet.openingBalance')?.toUpperCase()}</Typography>
                         <View style={[styles.balanceInputRow, { backgroundColor: inputBg }]}>
                             <Typography variant="h3" weight="bold" color="secondary">₹</Typography>
                             <TextInput
@@ -389,17 +411,21 @@ const AddAccountModal: React.FC<{
                     {/* Action Buttons */}
                     <View style={styles.actionButtons}>
                         <Pressable style={[styles.cancelBtn, { borderColor: isDark ? '#27272A' : '#E4E4E7' }]} onPress={onClose}>
-                            <Typography variant="body" weight="medium" color="secondary">Cancel</Typography>
+                            <Typography variant="body" weight="medium" color="secondary">{t('common.cancel')}</Typography>
                         </Pressable>
                         <Pressable
                             style={[
                                 styles.saveBtn,
-                                { backgroundColor: name && balance ? '#3B82F6' : (isDark ? '#27272A' : '#E4E4E7') }
+                                { backgroundColor: name && balance && !loading ? '#3B82F6' : (isDark ? '#27272A' : '#E4E4E7') }
                             ]}
                             onPress={handleSubmit}
-                            disabled={!name || !balance}
+                            disabled={!name || !balance || loading}
                         >
-                            <Typography variant="body" weight="semibold" style={{ color: name && balance ? '#FFF' : colors.textMuted }}>{editingAccount ? 'Update Account' : 'Create Account'}</Typography>
+                            {loading ? (
+                                <ActivityIndicator size="small" color="#FFF" />
+                            ) : (
+                                <Typography variant="body" weight="semibold" style={{ color: name && balance ? '#FFF' : colors.textMuted }}>{editingAccount ? t('wallet.updateAccount') : t('wallet.createAccount')}</Typography>
+                            )}
                         </Pressable>
                     </View>
                 </Animated.View>
@@ -413,17 +439,27 @@ const CategoriesScreen: React.FC = () => {
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const colors = isDark ? themes.dark : themes.light;
+    const { t } = useLanguage();
 
     const {
         budgets, updateBudget,
         bankAccounts, addBankAccount, updateBankAccount, deleteBankAccount,
-        totalSpent, totalIncome
+        totalSpent, totalIncome, transactions, refreshData
     } = useApp();
+
+    const [refreshing, setRefreshing] = useState(false);
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        await refreshData();
+        setRefreshing(false);
+    }, [refreshData]);
 
     const [activeTab, setActiveTab] = useState<'accounts' | 'budgets'>('accounts');
     const [selectedBudget, setSelectedBudget] = useState<{ category: string; limit: number; spent: number } | null>(null);
     const [showModal, setShowModal] = useState(false);
     const [showAddAccount, setShowAddAccount] = useState(false);
+    const [showStatementModal, setShowStatementModal] = useState(false);
 
     const totalBudget = budgets.reduce((sum, b) => sum + b.limit, 0);
     const usedPercentage = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0;
@@ -483,11 +519,57 @@ const CategoriesScreen: React.FC = () => {
 
     const [selectedAccount, setSelectedAccount] = useState<BankAccount | null>(null);
 
+    // Helper function to get transactions for a specific account
+    // Matches by: 1) accountId, 2) accountNumber in account name, 3) description containing account name pattern
+    const getAccountTransactions = (account: BankAccount | null) => {
+        if (!account) return [];
+
+        const accName = account.name.toLowerCase();
+
+        // Extract "Bank Name" by removing digits and special chars
+        // e.g. "HDFC - 1234" -> "hdfc"
+        // e.g. "My SBI Account" -> "my sbi account"
+        const bankName = accName.replace(/[^a-z\s]/g, '').trim();
+        const bankNameParts = bankName.split(/\s+/).filter(p => p.length > 2); // Only matches words > 2 chars
+
+        // Extract account number from account name (e.g., "BOB - 2314" -> "2314")
+        const accountNumberMatch = account.name.match(/(\d{4})/);
+        const accountNumber = accountNumberMatch ? accountNumberMatch[1] : null;
+
+        return transactions.filter(t => {
+            const desc = (t.description || '').toLowerCase();
+
+            // Match by accountId
+            if (t.accountId === account.id) return true;
+
+            // Match by accountNumber field in transaction
+            if (accountNumber && t.accountNumber === accountNumber) return true;
+
+            // Match by description containing account number pattern
+            if (accountNumber && desc.includes(accountNumber)) return true;
+
+            // Fuzzy Match: Account Name in Description
+            if (accName.length > 2 && desc.includes(accName)) return true;
+
+            // Fuzzy Match: Bank Name Parts in Description
+            // If any significant part of the account name (e.g. "HDFC") appears in description
+            if (bankNameParts.length > 0) {
+                // Check if description starts with valid bank name (high confidence)
+                // e.g. "HDFC: Merchant" starts with "hdfc"
+                if (bankNameParts.some(part => desc.startsWith(part) || desc.includes(`${part}:`) || desc.includes(`${part} `))) {
+                    return true;
+                }
+            }
+
+            return false;
+        });
+    };
+
     return (
         <View style={[styles.container, { backgroundColor: isDark ? colors.background : '#F9F9FB', paddingTop: insets.top }]}>
             <View style={styles.header}>
-                <Typography variant="h1" weight="bold">Wallet</Typography>
-                <Typography variant="body" color="secondary">Manage your funds</Typography>
+                <Typography variant="h1" weight="bold">{t('nav.wallet')}</Typography>
+                <Typography variant="body" color="secondary">{t('wallet.manageFunds')}</Typography>
             </View>
 
             {/* Tab Toggle */}
@@ -528,20 +610,28 @@ const CategoriesScreen: React.FC = () => {
                     onPress={() => handleTabChange('accounts')}
                 >
                     <Icon name="wallet-outline" size={18} color={activeTab === 'accounts' ? (isDark ? '#FFF' : colors.text) : colors.textMuted} />
-                    <Typography variant="body" weight={activeTab === 'accounts' ? 'bold' : 'medium'} style={{ marginLeft: 6, color: activeTab === 'accounts' ? (isDark ? '#FFF' : colors.text) : colors.textSecondary }}>Accounts</Typography>
+                    <Typography variant="body" weight={activeTab === 'accounts' ? 'bold' : 'medium'} style={{ marginLeft: 6, color: activeTab === 'accounts' ? (isDark ? '#FFF' : colors.text) : colors.textSecondary }}>{t('wallet.accounts')}</Typography>
                 </Pressable>
                 <Pressable
                     style={styles.tab}
                     onPress={() => handleTabChange('budgets')}
                 >
                     <Icon name="chart-pie" size={18} color={activeTab === 'budgets' ? (isDark ? '#FFF' : colors.text) : colors.textMuted} />
-                    <Typography variant="body" weight={activeTab === 'budgets' ? 'bold' : 'medium'} style={{ marginLeft: 6, color: activeTab === 'budgets' ? (isDark ? '#FFF' : colors.text) : colors.textSecondary }}>Budgets</Typography>
+                    <Typography variant="body" weight={activeTab === 'budgets' ? 'bold' : 'medium'} style={{ marginLeft: 6, color: activeTab === 'budgets' ? (isDark ? '#FFF' : colors.text) : colors.textSecondary }}>{t('budget.budgets')}</Typography>
                 </Pressable>
             </View>
 
             <ScrollView
                 contentContainerStyle={[styles.content, { paddingBottom: 120 + insets.bottom }]}
                 showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor={colors.primary}
+                        colors={[colors.primary]}
+                    />
+                }
             >
                 <Animated.View style={{ opacity: contentFadeAnim }}>
                     {/* ACCOUNTS TAB */}
@@ -549,9 +639,14 @@ const CategoriesScreen: React.FC = () => {
                         <>
                             {/* Total Balance Card */}
                             <Animated.View style={[styles.overviewCard, { backgroundColor: isDark ? colors.card : '#FFF', opacity: fadeAnim }]}>
-                                <Typography variant="caption" color="secondary">Total Balance</Typography>
+                                <Typography variant="caption" color="secondary">{t('wallet.totalBalance')}</Typography>
                                 <Typography variant="3xl" weight="bold">
-                                    ₹{bankAccounts.reduce((sum, a) => sum + a.balance, 0).toLocaleString()}
+                                    ₹{bankAccounts.reduce((sum, account) => {
+                                        const txs = getAccountTransactions(account);
+                                        const inc = txs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+                                        const exp = txs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+                                        return sum + (account.balance + inc - exp);
+                                    }, 0).toLocaleString()}
                                 </Typography>
                                 <Typography variant="caption" color="secondary" style={{ marginTop: 4 }}>
                                     {bankAccounts.length} account{bankAccounts.length !== 1 ? 's' : ''}
@@ -560,40 +655,48 @@ const CategoriesScreen: React.FC = () => {
 
                             {/* Accounts List */}
                             <View style={styles.sectionRow}>
-                                <Typography variant="caption" weight="semibold" color="secondary" style={styles.sectionLabel}>YOUR ACCOUNTS</Typography>
+                                <Typography variant="caption" weight="semibold" color="secondary" style={styles.sectionLabel}>{t('wallet.yourAccounts')?.toUpperCase()}</Typography>
                                 <Pressable onPress={() => { setSelectedAccount(null); setShowAddAccount(true); }} style={styles.addBtn}>
                                     <Icon name="plus" size={16} color={colors.primary} />
-                                    <Typography variant="caption" weight="semibold" style={{ color: colors.primary, marginLeft: 4 }}>Add</Typography>
+                                    <Typography variant="caption" weight="semibold" style={{ color: colors.primary, marginLeft: 4 }}>{t('wallet.add')}</Typography>
                                 </Pressable>
                             </View>
 
-                            {bankAccounts.map((account) => (
-                                <Pressable
-                                    key={account.id}
-                                    style={({ pressed }) => [
-                                        styles.accountCard,
-                                        {
-                                            backgroundColor: isDark ? '#18181B' : '#FFF',
-                                            borderWidth: 1,
-                                            borderColor: isDark ? '#27272A' : colors.border,
-                                            opacity: pressed ? 0.7 : 1
-                                        }
-                                    ]}
-                                    onPress={() => { setSelectedAccount(account); setShowAddAccount(true); }}
-                                >
-                                    <View style={[styles.accountIcon, { backgroundColor: isDark ? '#27272A' : '#F4F4F5' }]}>
-                                        <Typography variant="lg">{account.icon}</Typography>
-                                    </View>
-                                    <View style={styles.accountInfo}>
-                                        <Typography variant="body" weight="medium">{account.name}</Typography>
-                                        <Typography variant="caption" color="secondary" style={{ textTransform: 'capitalize' }}>{account.type}</Typography>
-                                    </View>
-                                    <View style={{ alignItems: 'flex-end' }}>
-                                        <Typography variant="body" weight="semibold">₹{account.balance.toLocaleString()}</Typography>
-                                        <Typography variant="caption" color="secondary" style={{ fontSize: 10 }}>tap to edit</Typography>
-                                    </View>
-                                </Pressable>
-                            ))}
+                            {bankAccounts.map((account) => {
+                                const accountTxs = getAccountTransactions(account);
+                                const income = accountTxs.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+                                const expense = accountTxs.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+                                const currentBalance = account.balance + income - expense;
+
+                                return (
+                                    <Pressable
+                                        key={account.id}
+                                        style={({ pressed }) => [
+                                            styles.accountCard,
+                                            {
+                                                backgroundColor: isDark ? '#18181B' : '#FFF',
+                                                borderWidth: 1,
+                                                borderColor: isDark ? '#27272A' : colors.border,
+                                                opacity: pressed ? 0.7 : 1
+                                            }
+                                        ]}
+                                        onPress={() => { setSelectedAccount(account); setShowStatementModal(true); }}
+                                        onLongPress={() => { setSelectedAccount(account); setShowAddAccount(true); }}
+                                    >
+                                        <View style={[styles.accountIcon, { backgroundColor: isDark ? '#27272A' : '#F4F4F5' }]}>
+                                            <Typography variant="lg">{account.icon}</Typography>
+                                        </View>
+                                        <View style={styles.accountInfo}>
+                                            <Typography variant="body" weight="medium">{account.name}</Typography>
+                                            <Typography variant="caption" color="secondary" style={{ textTransform: 'capitalize' }}>{account.type}</Typography>
+                                        </View>
+                                        <View style={{ alignItems: 'flex-end' }}>
+                                            <Typography variant="body" weight="semibold">₹{currentBalance.toLocaleString()}</Typography>
+                                            <Typography variant="caption" color="secondary" style={{ fontSize: 10 }}>{t('wallet.viewStatement') || 'Tap to view'}</Typography>
+                                        </View>
+                                    </Pressable>
+                                );
+                            })}
                         </>
                     )}
 
@@ -604,12 +707,12 @@ const CategoriesScreen: React.FC = () => {
                             <Animated.View style={[styles.overviewCard, { backgroundColor: isDark ? colors.card : '#FFF', opacity: fadeAnim }]}>
                                 <View style={styles.overviewRow}>
                                     <View style={styles.overviewItem}>
-                                        <Typography variant="caption" color="secondary">Total Spent</Typography>
+                                        <Typography variant="caption" color="secondary">{t('stats.totalSpent')}</Typography>
                                         <Typography variant="h2" weight="bold">₹{totalSpent.toLocaleString()}</Typography>
                                     </View>
                                     <View style={[styles.overviewDivider, { backgroundColor: colors.border }]} />
                                     <View style={styles.overviewItem}>
-                                        <Typography variant="caption" color="secondary">Total Budget</Typography>
+                                        <Typography variant="caption" color="secondary">{t('budget.budget')}</Typography>
                                         <Typography variant="h2" weight="bold">₹{totalBudget.toLocaleString()}</Typography>
                                     </View>
                                 </View>
@@ -622,14 +725,14 @@ const CategoriesScreen: React.FC = () => {
                                         delay={200}
                                     />
                                     <Typography variant="caption" color="secondary" style={{ marginTop: 6 }}>
-                                        {usedPercentage}% of budget used
+                                        {usedPercentage}{t('wallet.ofBudgetUsed')}
                                     </Typography>
                                 </View>
                             </Animated.View>
 
                             {/* Categories List */}
                             <Typography variant="caption" weight="semibold" color="secondary" style={styles.sectionLabel}>
-                                CATEGORIES
+                                {t('budget.categories')?.toUpperCase()}
                             </Typography>
 
                             {budgets.map((budget, index) => {
@@ -640,7 +743,7 @@ const CategoriesScreen: React.FC = () => {
 
                                 return (
                                     <Pressable
-                                        key={budget.category}
+                                        key={`budget-${index}`}
                                         style={({ pressed }) => [
                                             styles.categoryCard,
                                             { backgroundColor: isDark ? colors.card : '#FFF', opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }
@@ -652,7 +755,7 @@ const CategoriesScreen: React.FC = () => {
                                         </View>
                                         <View style={styles.categoryContent}>
                                             <View style={styles.categoryHeader}>
-                                                <Typography variant="body" weight="medium">{info.label}</Typography>
+                                                <Typography variant="body" weight="medium">{t(`categories.${budget.category}`) || budget.category}</Typography>
                                                 <Typography variant="bodySmall" weight="semibold" style={{ color: isOver ? '#EF4444' : colors.text }}>
                                                     {percent}%
                                                 </Typography>
@@ -688,11 +791,131 @@ const CategoriesScreen: React.FC = () => {
             <AddAccountModal
                 visible={showAddAccount}
                 onClose={() => setShowAddAccount(false)}
-                onAdd={(account) => { addBankAccount(account); setShowAddAccount(false); }}
+                onAdd={async (account) => {
+                    const success = await addBankAccount(account);
+                    if (success) setShowAddAccount(false);
+                    return success;
+                }}
                 onUpdate={(id, data) => { updateBankAccount(id, data); setShowAddAccount(false); }}
                 onDelete={(id) => { deleteBankAccount(id); setShowAddAccount(false); }}
                 editingAccount={selectedAccount}
             />
+
+            {/* Account Statement Modal */}
+            <Modal visible={showStatementModal} animationType="slide" onRequestClose={() => setShowStatementModal(false)}>
+                <View style={[styles.statementContainer, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+                    {/* Header */}
+                    <View style={styles.statementHeader}>
+                        <Pressable onPress={() => setShowStatementModal(false)} style={styles.backBtn}>
+                            <Icon name="arrow-left" size={24} color={colors.text} />
+                        </Pressable>
+                        <Typography variant="body" weight="semibold">
+                            {selectedAccount?.name || 'Account'} Statement
+                        </Typography>
+                        <Pressable
+                            onPress={() => { setShowStatementModal(false); setShowAddAccount(true); }}
+                            style={styles.backBtn}
+                        >
+                            <Icon name="pencil" size={20} color={colors.primary} />
+                        </Pressable>
+                    </View>
+
+                    {/* Account Summary */}
+                    <View style={[styles.statementSummary, { backgroundColor: isDark ? '#18181B' : '#FFF' }]}>
+                        <View style={{ alignItems: 'center' }}>
+                            <Typography variant="h2" weight="bold">
+                                ₹{((selectedAccount?.balance || 0) +
+                                    getAccountTransactions(selectedAccount)
+                                        .filter(t => t.type === 'income')
+                                        .reduce((sum, t) => sum + t.amount, 0) -
+                                    getAccountTransactions(selectedAccount)
+                                        .filter(t => t.type === 'expense')
+                                        .reduce((sum, t) => sum + t.amount, 0)
+                                ).toLocaleString()}
+                            </Typography>
+                            <Typography variant="caption" color="secondary">Current Balance</Typography>
+                        </View>
+                        <View style={styles.summaryRow}>
+                            <View style={styles.summaryItem}>
+                                <Icon name="arrow-down" size={16} color="#22C55E" />
+                                <Typography variant="caption" color="secondary" style={{ marginLeft: 4 }}>Income</Typography>
+                                <Typography variant="body" weight="semibold" style={{ color: '#22C55E', marginLeft: 8 }}>
+                                    ₹{getAccountTransactions(selectedAccount)
+                                        .filter(t => t.type === 'income')
+                                        .reduce((sum, t) => sum + t.amount, 0).toLocaleString()}
+                                </Typography>
+                            </View>
+                            <View style={styles.summaryItem}>
+                                <Icon name="arrow-up" size={16} color="#EF4444" />
+                                <Typography variant="caption" color="secondary" style={{ marginLeft: 4 }}>Expenses</Typography>
+                                <Typography variant="body" weight="semibold" style={{ color: '#EF4444', marginLeft: 8 }}>
+                                    ₹{getAccountTransactions(selectedAccount)
+                                        .filter(t => t.type === 'expense')
+                                        .reduce((sum, t) => sum + t.amount, 0).toLocaleString()}
+                                </Typography>
+                            </View>
+                        </View>
+                    </View>
+
+                    {/* Transactions List */}
+                    <View style={{ flex: 1, padding: spacing.md }}>
+                        <Typography variant="caption" weight="semibold" color="secondary" style={{ marginBottom: spacing.sm }}>
+                            TRANSACTIONS
+                        </Typography>
+
+                        {getAccountTransactions(selectedAccount).length === 0 ? (
+                            <View style={styles.emptyState}>
+                                <Icon name="receipt" size={48} color={colors.textMuted} />
+                                <Typography variant="body" color="secondary" style={{ marginTop: spacing.md, textAlign: 'center' }}>
+                                    No transactions linked to this account yet.
+                                </Typography>
+                            </View>
+                        ) : (
+                            <ScrollView showsVerticalScrollIndicator={false}>
+                                {getAccountTransactions(selectedAccount)
+                                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                    .map((tx) => (
+                                        <View
+                                            key={tx.id}
+                                            style={[styles.transactionItem, { backgroundColor: isDark ? '#18181B' : '#FFF' }]}
+                                        >
+                                            <View style={[
+                                                styles.txIcon,
+                                                { backgroundColor: tx.type === 'income' ? '#22C55E20' : '#EF444420' }
+                                            ]}>
+                                                <Icon
+                                                    name={tx.type === 'income' ? 'arrow-down-bold' : 'arrow-up-bold'}
+                                                    size={18}
+                                                    color={tx.type === 'income' ? '#22C55E' : '#EF4444'}
+                                                />
+                                            </View>
+                                            <View style={{ flex: 1, marginLeft: spacing.md }}>
+                                                <Typography variant="body" weight="medium" numberOfLines={1}>
+                                                    {tx.description || tx.category || 'Transaction'}
+                                                </Typography>
+                                                <Typography variant="caption" color="secondary">
+                                                    {new Date(tx.date).toLocaleDateString('en-IN', {
+                                                        day: 'numeric',
+                                                        month: 'short',
+                                                        year: 'numeric'
+                                                    })}
+                                                    {tx.category ? ` • ${tx.category}` : ''}
+                                                </Typography>
+                                            </View>
+                                            <Typography
+                                                variant="body"
+                                                weight="semibold"
+                                                style={{ color: tx.type === 'income' ? '#22C55E' : '#EF4444' }}
+                                            >
+                                                {tx.type === 'income' ? '+' : '-'}₹{tx.amount.toLocaleString()}
+                                            </Typography>
+                                        </View>
+                                    ))}
+                            </ScrollView>
+                        )}
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 };
@@ -756,6 +979,49 @@ const styles = StyleSheet.create({
     accountCard: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, borderRadius: 16, marginBottom: spacing.sm },
     accountIcon: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: spacing.md },
     accountInfo: { flex: 1 },
+
+    // Statement Modal Styles
+    statementContainer: { flex: 1 },
+    statementHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.md,
+    },
+    backBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+    statementSummary: {
+        margin: spacing.md,
+        padding: spacing.lg,
+        borderRadius: 16
+    },
+    summaryRow: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        gap: spacing.xl,
+        marginTop: spacing.md
+    },
+    summaryItem: { flexDirection: 'row', alignItems: 'center' },
+    emptyState: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: spacing.xl
+    },
+    transactionItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: spacing.md,
+        borderRadius: 12,
+        marginBottom: spacing.sm
+    },
+    txIcon: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
 });
 
 export default CategoriesScreen;

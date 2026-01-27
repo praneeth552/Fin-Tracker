@@ -4,17 +4,16 @@
  */
 
 import React from 'react';
-import { Text, StyleSheet, TextStyle, StyleProp, useColorScheme } from 'react-native';
+import { Text, StyleSheet, TextStyle, StyleProp, useColorScheme, TextProps } from 'react-native';
 import { themes, typography } from '../../theme';
 
-interface TypographyProps {
+interface TypographyProps extends TextProps {
     children: React.ReactNode;
     variant?: 'h1' | 'h2' | 'h3' | '4xl' | '3xl' | '2xl' | 'xl' | 'lg' | 'body' | 'bodySmall' | 'caption' | 'label';
     color?: 'primary' | 'secondary' | 'muted' | 'inverse' | 'success' | 'warning' | 'error' | 'accent';
     weight?: 'regular' | 'medium' | 'semibold' | 'bold';
     align?: 'left' | 'center' | 'right';
     style?: StyleProp<TextStyle>;
-    numberOfLines?: number;
 }
 
 export const Typography: React.FC<TypographyProps> = ({
@@ -24,7 +23,7 @@ export const Typography: React.FC<TypographyProps> = ({
     weight,
     align = 'left',
     style,
-    numberOfLines,
+    ...props
 }) => {
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
@@ -56,7 +55,7 @@ export const Typography: React.FC<TypographyProps> = ({
                 },
                 style,
             ]}
-            numberOfLines={numberOfLines}
+            {...props}
         >
             {children}
         </Text>

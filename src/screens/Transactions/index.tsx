@@ -17,46 +17,22 @@ import {
     LayoutAnimation,
     Platform,
     UIManager,
+    RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Typography } from '../../components/common';
+import { MonthDropdown, MonthFilter } from '../../components/MonthDropdown';
 import { useApp, Transaction } from '../../context/AppContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { themes, spacing } from '../../theme';
 
-type CategoryType = 'food' | 'transport' | 'shopping' | 'bills' | 'entertainment' | 'health' | 'misc' | 'income';
+type CategoryType = 'food' | 'transport' | 'shopping' | 'bills' | 'entertainment' | 'health' | 'misc' | 'income' | string;
 
-const categoryIcons: Record<string, string> = {
-    food: 'silverware-fork-knife',
-    transport: 'car',
-    shopping: 'cart',
-    bills: 'file-document-outline',
-    entertainment: 'movie-open',
-    health: 'pill',
-    education: 'school',
-    misc: 'shape',
-    income: 'cash-plus',
-};
+import { useCategories } from '../../hooks/useCategories';
 
-const categoryColors: Record<string, string> = {
-    food: '#3B82F6',
-    transport: '#8B5CF6',
-    shopping: '#EC4899',
-    bills: '#10B981',
-    entertainment: '#F59E0B',
-    health: '#EF4444',
-    education: '#06B6D4',
-    misc: '#6B7280',
-    income: '#22C55E',
-};
-
-const filterOptions: { key: 'all' | CategoryType; label: string }[] = [
-    { key: 'all', label: 'All' },
-    { key: 'food', label: 'Food' },
-    { key: 'transport', label: 'Travel' },
-    { key: 'shopping', label: 'Shop' },
-    { key: 'bills', label: 'Bills' },
-    { key: 'income', label: 'Income' },
+const defaultFilterKeys: { key: 'all' | string; labelKey?: string; label?: string }[] = [
+    { key: 'all', labelKey: 'transactions.all' },
 ];
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -122,8 +98,14 @@ const TransactionItem: React.FC<{
         extrapolate: 'clamp',
     });
 
-    const catColor = categoryColors[item.category] || categoryColors[item.type] || '#999';
-    const catIcon = categoryIcons[item.category] || categoryIcons[item.type] || 'shape';
+    const { getCategoryIcon, getCategoryColor } = useCategories();
+    // Use emoji for icon, if it's not a standard icon name, we might need a wrapper or just render Text
+    // But the hook returns Emojis now. MaterialCommunityIcons doesn't support Emojis as "name".
+    // So we need to change how we render the icon.
+    // However, the original code used Material icons. My hook uses Emojis.
+    // Strategy: The new design uses Emojis everywhere. So I should render a Text component for the icon, not Icon.
+    const catColor = getCategoryColor(item.category);
+    const catIcon = getCategoryIcon(item.category);
 
     return (
         <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
@@ -141,7 +123,7 @@ const TransactionItem: React.FC<{
                     ]}
                 >
                     <View style={[styles.iconBox, { backgroundColor: catColor + '15' }]}>
-                        <Icon name={catIcon} size={20} color={catColor} />
+                        <Typography variant="h3">{catIcon}</Typography>
                     </View>
                     <View style={styles.infoCol}>
                         <Typography variant="body" weight="medium">{item.description}</Typography>
@@ -169,9 +151,61 @@ const TransactionsScreen: React.FC = () => {
     const colors = isDark ? themes.dark : themes.light;
     const bgColor = isDark ? colors.background : '#FAFAFA';
 
-    // Use global state
-    const { transactions, deleteTransaction } = useApp();
-    const [activeFilter, setActiveFilter] = useState<'all' | CategoryType>('all');
+    // Use global state with filtered transactions and custom categories
+    const { filteredTransactions, deleteTransaction, selectedMonth, selectedYear, setSelectedMonth, availableMonths, customCategories, refreshData } = useApp();
+    const { t } = useLanguage();
+
+    const [refreshing, setRefreshing] = useState(false);
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        await refreshData();
+        setRefreshing(false);
+    }, [refreshData]);
+
+    const { allCategories } = useCategories();
+
+    const filterKeys = React.useMemo(() => {
+        const categoryFilters = allCategories.map(cat => ({
+            key: cat.key,
+            label: cat.label,
+            labelKey: undefined as string | undefined
+        }));
+
+        // Add 'All' at the beginning
+        return [{ key: 'all', labelKey: 'transactions.all', label: undefined as string | undefined }, ...categoryFilters];
+    }, [allCategories]);
+
+    // Get route params for filterCategory from pie chart navigation
+    const route = require('@react-navigation/native').useRoute();
+    const filterCategoryParam = route.params?.filterCategory as CategoryType | undefined;
+
+    // Initialize filter from navigation param or default to 'all'
+    const [activeFilter, setActiveFilter] = useState<'all' | CategoryType>(filterCategoryParam || 'all');
+
+    // Update filter when navigation param changes
+    React.useEffect(() => {
+        if (filterCategoryParam) {
+            setActiveFilter(filterCategoryParam);
+        }
+    }, [filterCategoryParam]);
+
+    // Convert global month to MonthFilter type for dropdown
+    const now = new Date();
+    const isThisMonth = selectedMonth === now.getMonth() + 1 && selectedYear === now.getFullYear();
+    const [monthFilter, setMonthFilter] = useState<MonthFilter>(isThisMonth ? 'this' : 'prev');
+
+    const handleMonthChange = (filter: MonthFilter) => {
+        setMonthFilter(filter);
+        const date = new Date();
+        if (filter === 'this') {
+            setSelectedMonth(date.getMonth() + 1, date.getFullYear());
+        } else {
+            const prevMonth = date.getMonth() === 0 ? 12 : date.getMonth();
+            const prevYear = date.getMonth() === 0 ? date.getFullYear() - 1 : date.getFullYear();
+            setSelectedMonth(prevMonth, prevYear);
+        }
+    };
 
     const handleFilterChange = useCallback((filter: 'all' | CategoryType) => {
         LayoutAnimation.configureNext({
@@ -193,7 +227,7 @@ const TransactionsScreen: React.FC = () => {
     }, [deleteTransaction]);
 
     const sections = useMemo(() => {
-        const filtered = transactions.filter((t: Transaction) => {
+        const filtered = filteredTransactions.filter((t: Transaction) => {
             if (activeFilter === 'all') return true;
             if (activeFilter === 'income') return t.type === 'income';
             return t.category === activeFilter;
@@ -219,18 +253,18 @@ const TransactionsScreen: React.FC = () => {
 
             return { title, data: groups[date] };
         });
-    }, [activeFilter, transactions]);
+    }, [activeFilter, filteredTransactions]);
 
     // Empty state
-    if (transactions.length === 0) {
+    if (filteredTransactions.length === 0) {
         return (
             <View style={[styles.container, styles.emptyContainer, { backgroundColor: bgColor, paddingTop: insets.top }]}>
                 <Icon name="receipt" size={64} color={colors.textMuted} />
                 <Typography variant="h3" weight="semibold" style={{ marginTop: spacing.md }}>
-                    No Transactions Yet
+                    {t('transactions.noTransactions')}
                 </Typography>
                 <Typography variant="body" color="secondary" align="center" style={{ marginTop: spacing.sm, maxWidth: 250 }}>
-                    Tap the + button to add your first transaction!
+                    {t('transactions.addFirst')}
                 </Typography>
             </View>
         );
@@ -239,11 +273,22 @@ const TransactionsScreen: React.FC = () => {
     return (
         <View style={[styles.container, { backgroundColor: bgColor, paddingTop: insets.top }]}>
             <View style={styles.header}>
-                <Typography variant="h2" weight="bold">Activity</Typography>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
+                    <Typography variant="h2" weight="bold">{t('transactions.activity')}</Typography>
+                    <MonthDropdown
+                        value={monthFilter}
+                        onChange={handleMonthChange}
+                        selectedMonth={selectedMonth}
+                        selectedYear={selectedYear}
+                        availableMonths={availableMonths}
+                        onMonthSelect={(month, year) => setSelectedMonth(month, year)}
+                    />
+                </View>
                 <View style={styles.filterWrapper}>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-                        {filterOptions.map(opt => {
+                        {filterKeys.map((opt) => {
                             const isActive = activeFilter === opt.key;
+                            const filterLabel = opt.labelKey ? t(opt.labelKey) : (opt.label || opt.key);
                             return (
                                 <Pressable
                                     key={opt.key}
@@ -261,7 +306,7 @@ const TransactionsScreen: React.FC = () => {
                                         weight={isActive ? 'semibold' : 'medium'}
                                         style={{ color: isActive ? '#FFFFFF' : colors.textSecondary }}
                                     >
-                                        {opt.label}
+                                        {filterLabel}
                                     </Typography>
                                 </Pressable>
                             );
@@ -284,6 +329,14 @@ const TransactionsScreen: React.FC = () => {
                     </View>
                 )}
                 ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor={colors.primary}
+                        colors={[colors.primary]}
+                    />
+                }
                 showsVerticalScrollIndicator={false}
             />
         </View>

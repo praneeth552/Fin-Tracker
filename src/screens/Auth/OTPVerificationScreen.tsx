@@ -24,6 +24,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Typography } from '../../components/common';
 import { themes, spacing } from '../../theme';
 import { useAuth } from '../../../App';
+import { Api } from '../../services/api';
 
 interface OTPVerificationScreenProps {
     navigation: any;
@@ -88,18 +89,25 @@ const OTPVerificationScreen: React.FC<OTPVerificationScreenProps> = ({ navigatio
         }
 
         setLoading(true);
-        // Simulate verification
-        setTimeout(async () => {
+        try {
+            const response = await Api.verify({ email, otp: code });
+
             setLoading(false);
-            if (mode === 'signup') {
-                await AsyncStorage.setItem('userEmail', email);
-                signIn(); // Log in directly
+            if (response && response.success) {
+                if (mode === 'signup') {
+                    Alert.alert('Success', 'Account verified! Please sign in.');
+                    navigation.navigate('Login');
+                } else {
+                    Alert.alert('Success', 'Email verified! Please sign in.');
+                    navigation.navigate('Login');
+                }
             } else {
-                Alert.alert('Success', 'Email verified! You can now reset your password.');
-                // Here we would navigate to Reset Password, but for MVP we go to Login
-                navigation.navigate('Login');
+                Alert.alert('Error', response?.error || 'Invalid OTP');
             }
-        }, 1500);
+        } catch (error: any) {
+            setLoading(false);
+            Alert.alert('Error', error.message || 'Verification failed');
+        }
     };
 
     const handleResend = () => {
