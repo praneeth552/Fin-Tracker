@@ -142,7 +142,8 @@ const HIGH_CONFIDENCE_MERCHANTS: Record<string, string> = {
     'youtube': 'entertainment', 'apple': 'entertainment',
     // Groceries
     'bigbasket': 'groceries', 'blinkit': 'groceries', 'zepto': 'groceries', 'dunzo': 'groceries',
-    'jiomart': 'groceries', 'dmart': 'groceries', 'reliance fresh': 'groceries', 'nature basket': 'groceries',
+    'jiomart': 'groceries', 'dmart': 'groceries', 'avenue supermarts': 'groceries', 'dmart ready': 'groceries',
+    'reliance fresh': 'groceries', 'nature basket': 'groceries', 'more retail': 'groceries', 'spencers': 'groceries',
     // Health
     'apollo': 'health', 'netmeds': 'health', 'pharmeasy': 'health', '1mg': 'health', 'medplus': 'health', 'practo': 'health',
     'cult': 'health', 'gym': 'health',
@@ -314,13 +315,20 @@ export const SMSParser = {
      * ENHANCED: Extract merchant/payee name
      */
     extractMerchant: (message: string): string | undefined => {
+        const GENERIC_MERCHANTS = ['user', 'upi', 'person', 'vendor', 'shop', 'store', 'payment', 'transfer', 'self', 'cash'];
+
         for (const pattern of MERCHANT_PATTERNS) {
             pattern.lastIndex = 0;
             const match = message.match(pattern);
             if (match && match[1]) {
                 const merchant = match[1].trim();
-                // Skip if it looks like transaction metadata
-                if (merchant.length > 2 && !/^\d+$/.test(merchant) && !/^[Xx]+\d+$/.test(merchant)) {
+                const lower = merchant.toLowerCase();
+
+                // Skip if it looks like transaction metadata or generic term
+                if (merchant.length > 2 &&
+                    !/^\d+$/.test(merchant) &&
+                    !/^[Xx]+\d+$/.test(merchant) &&
+                    !GENERIC_MERCHANTS.includes(lower)) {
                     return merchant;
                 }
             }
@@ -358,11 +366,6 @@ export const SMSParser = {
         };
     },
 
-    /**
-     * SMART Auto-detect category
-     * Priority: 1. High-confidence merchant match  2. Generic keyword match  3. undefined (needs review)
-     * Transfer is NOT auto-categorized - user should decide if it's transfer or payment to merchant
-     */
     /**
      * SMART Auto-detect category
      * Priority: 1. User defined rules (MerchantRulesService) 2. High-confidence merchant match 3. Generic keyword match 4. undefined
@@ -407,12 +410,21 @@ export const SMSParser = {
         // Needs review if no auto-category detected
         const needsReview = !parsed.autoCategory;
 
+        // Cleanup raw message for description if no merchant found
+        // Remove "VM-HDFCBK:" or "AD-BANK:" prefixes
+        let fallbackDesc = parsed.raw;
+        const prefixMatch = parsed.raw.match(/^[A-Z]{2}-[A-Z0-9]{3,8}:\s*/);
+        if (prefixMatch) {
+            fallbackDesc = parsed.raw.replace(prefixMatch[0], '');
+        }
+        fallbackDesc = fallbackDesc.substring(0, 50);
+
         return {
             id: `sms-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             amount: parsed.amount,
             type: parsed.type === 'debit' ? 'expense' : 'income',
             category: category,
-            description: parsed.merchant ? `${parsed.bank || 'Bank'}: ${parsed.merchant}` : parsed.raw.substring(0, 50),
+            description: parsed.merchant ? `${parsed.bank || 'Bank'}: ${parsed.merchant}` : fallbackDesc,
             date: parsed.date || new Date().toISOString().split('T')[0],
             paymentMethod: 'sms-auto',
             accountNumber: parsed.accountNumber,

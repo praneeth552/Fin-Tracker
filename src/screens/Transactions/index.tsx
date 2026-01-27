@@ -23,8 +23,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Typography } from '../../components/common';
 import { MonthDropdown, MonthFilter } from '../../components/MonthDropdown';
+import { CategorySelectionModal } from '../../components/CategorySelectionModal';
 import { useApp, Transaction } from '../../context/AppContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { MerchantRulesService } from '../../services/MerchantRulesService';
 import { themes, spacing } from '../../theme';
 
 type CategoryType = 'food' | 'transport' | 'shopping' | 'bills' | 'entertainment' | 'health' | 'misc' | 'income' | string;
@@ -42,8 +44,9 @@ const TransactionItem: React.FC<{
     item: Transaction;
     isDark: boolean;
     onDelete: (id: string) => void;
+    onPress: () => void;
     index: number;
-}> = ({ item, isDark, onDelete, index }) => {
+}> = ({ item, isDark, onDelete, onPress, index }) => {
     const colors = isDark ? themes.dark : themes.light;
     const translateX = useRef(new Animated.Value(0)).current;
     const [isSwiping, setIsSwiping] = useState(false);
@@ -115,21 +118,25 @@ const TransactionItem: React.FC<{
                     <Icon name="trash-can-outline" size={22} color="#FFFFFF" />
                 </AnimatedPressable>
 
-                <Animated.View
+                <AnimatedPressable
                     {...panResponder.panHandlers}
                     style={[
                         styles.transactionRow,
                         { backgroundColor: isDark ? colors.card : '#FFFFFF', transform: [{ translateX }] }
                     ]}
+                    onPress={onPress}
                 >
                     <View style={[styles.iconBox, { backgroundColor: catColor + '15' }]}>
                         <Typography variant="h3">{catIcon}</Typography>
                     </View>
                     <View style={styles.infoCol}>
                         <Typography variant="body" weight="medium">{item.description}</Typography>
-                        <Typography variant="caption" color="secondary">
-                            {item.merchant || item.category} • {item.type}
-                        </Typography>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                            <Typography variant="caption" color="secondary">
+                                {item.merchant || item.category} • {item.type}
+                            </Typography>
+                            <Icon name="pencil-outline" size={14} color={colors.textMuted} style={{ marginLeft: 6 }} />
+                        </View>
                     </View>
                     <Typography
                         variant="body"
@@ -138,7 +145,7 @@ const TransactionItem: React.FC<{
                     >
                         {item.type === 'income' ? '+' : '-'}₹{item.amount.toLocaleString()}
                     </Typography>
-                </Animated.View>
+                </AnimatedPressable>
             </View>
         </Animated.View>
     );
@@ -270,6 +277,28 @@ const TransactionsScreen: React.FC = () => {
         );
     }
 
+    // State for editing
+    const [editModalVisible, setEditModalVisible] = useState(false);
+    const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
+    const { updateTransaction } = useApp();
+
+    const handleEdit = (tx: Transaction) => {
+        setSelectedTx(tx);
+        setEditModalVisible(true);
+    };
+
+    const handleUpdateCategory = async (category: string, updateRule: boolean) => {
+        if (!selectedTx) return;
+
+        await updateTransaction(selectedTx.id, { category });
+
+        if (updateRule) {
+            const merchant = selectedTx.merchant || selectedTx.description;
+            // Assuming MerchantRulesService is imported or defined elsewhere
+            await MerchantRulesService.setCategoryWithRule(merchant, category);
+        }
+    };
+
     return (
         <View style={[styles.container, { backgroundColor: bgColor, paddingTop: insets.top }]}>
             <View style={styles.header}>
@@ -320,7 +349,15 @@ const TransactionsScreen: React.FC = () => {
                 keyExtractor={item => item.id}
                 contentContainerStyle={{ paddingBottom: 100, paddingHorizontal: spacing.md }}
                 stickySectionHeadersEnabled={false}
-                renderItem={({ item, index }) => <TransactionItem item={item} isDark={isDark} onDelete={handleDelete} index={index} />}
+                renderItem={({ item, index }) => (
+                    <TransactionItem
+                        item={item}
+                        isDark={isDark}
+                        onDelete={handleDelete}
+                        onPress={() => handleEdit(item)}
+                        index={index}
+                    />
+                )}
                 renderSectionHeader={({ section: { title } }) => (
                     <View style={styles.sectionHeader}>
                         <Typography variant="caption" weight="bold" style={{ color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 }}>
@@ -338,6 +375,14 @@ const TransactionsScreen: React.FC = () => {
                     />
                 }
                 showsVerticalScrollIndicator={false}
+            />
+
+            <CategorySelectionModal
+                visible={editModalVisible}
+                onClose={() => setEditModalVisible(false)}
+                transaction={selectedTx}
+                mode="edit"
+                onConfirm={handleUpdateCategory}
             />
         </View>
     );

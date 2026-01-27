@@ -112,6 +112,17 @@ export const MerchantRulesService = {
             cleanMerchant = merchant.substring(colonIndex + 1).trim();
         }
 
+        // VALIDATION: Prevent generic transaction text from becoming a rule
+        // If the name contains numbers indicating amount, or transaction keywords, skip it
+        // Removed 'bank', 'a/c' as they might be part of legitimate payees (e.g. "Bank Charges")
+        const isGenericText = /(?:debited|credited|balance|avl|bal|txn|ref|rs\.|inr|upi)/i.test(cleanMerchant);
+        const hasAmount = /\d+\.\d{2}/.test(cleanMerchant) || /(?:iso|inr|rs)\.?\s*\d+/i.test(cleanMerchant);
+
+        if (isGenericText || hasAmount || cleanMerchant.length > 50) {
+            console.log(`[MerchantRules] Skipped creating rule for invalid merchant name: "${cleanMerchant}"`);
+            return;
+        }
+
         // Only create rule if merchant is meaningful
         if (cleanMerchant.length >= 3 && !/^\d+$/.test(cleanMerchant)) {
             await MerchantRulesService.addRule(cleanMerchant, category);

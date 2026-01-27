@@ -39,9 +39,13 @@ import { AutoTrackingModal } from '../../components/AutoTrackingModal';
 import { DetectedAccountModal } from '../../components/DetectedAccountModal';
 import { UncategorizedTransactions } from '../../components/UncategorizedTransactions';
 import { MonthDropdown, MonthFilter } from '../../components/MonthDropdown';
+import { CategorySelectionModal } from '../../components/CategorySelectionModal';
+
+import { MerchantRulesService } from '../../services/MerchantRulesService';
 import { useApp } from '../../context/AppContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { themes, spacing } from '../../theme';
+
 
 const HEADER_MAX_HEIGHT = 100;
 const HEADER_MIN_HEIGHT = 60;
@@ -245,7 +249,8 @@ const DashboardScreen: React.FC = () => {
         detectedAccount,
         confirmDetectedAccount,
         ignoreDetectedAccount,
-        bankAccounts
+        bankAccounts,
+        updateTransaction
     } = useApp();
     const { t } = useLanguage();
 
@@ -413,6 +418,24 @@ const DashboardScreen: React.FC = () => {
         );
     }
 
+    // State for Transaction Edit
+    const [editCategoryModalVisible, setEditCategoryModalVisible] = useState(false);
+    const [selectedTx, setSelectedTx] = useState<any | null>(null);
+
+    const handleEditTx = (tx: any) => {
+        setSelectedTx(tx);
+        setEditCategoryModalVisible(true);
+    };
+
+    const handleUpdateCategory = async (category: string, updateRule: boolean) => {
+        if (!selectedTx) return;
+        await updateTransaction(selectedTx.id, { category });
+        if (updateRule) {
+            const merchant = selectedTx.merchant || selectedTx.description;
+            await MerchantRulesService.setCategoryWithRule(merchant, category);
+        }
+    };
+
     return (
         <View style={[styles.container, { backgroundColor: bgColor }]}>
             <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
@@ -570,18 +593,25 @@ const DashboardScreen: React.FC = () => {
                                 transactions
                                     .filter(t => t.date === new Date().toISOString().split('T')[0])
                                     .map((t, index) => (
-                                        <View key={`tx-${index}`} style={[styles.transactionItem, { backgroundColor: cardBg }]}>
+                                        <Pressable
+                                            key={`tx-${index}`}
+                                            style={[styles.transactionItem, { backgroundColor: cardBg }]}
+                                            onPress={() => handleEditTx(t)}
+                                        >
                                             <View style={[styles.iconBox, { backgroundColor: t.type === 'expense' ? '#EF444420' : '#22C55E20' }]}>
                                                 <Typography variant="lg">{t.type === 'expense' ? '💸' : '💰'}</Typography>
                                             </View>
                                             <View style={{ flex: 1, marginHorizontal: spacing.md }}>
                                                 <Typography variant="body" weight="medium">{t.description}</Typography>
-                                                <Typography variant="caption" color="secondary">{t.category}</Typography>
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                                                    <Typography variant="caption" color="secondary">{t.category}</Typography>
+                                                    <Icon name="pencil-outline" size={14} color={colors.textMuted} style={{ marginLeft: 6 }} />
+                                                </View>
                                             </View>
                                             <Typography variant="body" weight="bold" style={{ color: t.type === 'expense' ? '#EF4444' : '#22C55E' }}>
                                                 {t.type === 'expense' ? '-' : '+'}₹{t.amount.toLocaleString()}
                                             </Typography>
-                                        </View>
+                                        </Pressable>
                                     ))
                             ) : (
                                 <View style={{ alignItems: 'center', padding: spacing.xl }}>
@@ -603,6 +633,14 @@ const DashboardScreen: React.FC = () => {
                 currentBalance={userData.balance}
                 currentIncome={monthlyIncome}
                 onSave={(balance, income) => updateUserData({ balance, income })}
+            />
+
+            <CategorySelectionModal
+                visible={editCategoryModalVisible}
+                onClose={() => setEditCategoryModalVisible(false)}
+                transaction={selectedTx}
+                mode="edit"
+                onConfirm={handleUpdateCategory}
             />
 
             <AutoTrackingModal
