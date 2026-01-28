@@ -73,9 +73,61 @@ export const GoogleSheetsService = {
                 console.log('Creating new spreadsheet...');
                 await GoogleSheetsService.createSpreadsheet();
             }
+
+            // Ensure all required sheets exist (migrations/fixes)
+            await GoogleSheetsService.ensureSheetsExist();
+
         } catch (error) {
             console.error('GoogleSheetsService Init Error:', error);
             throw error;
+        }
+    },
+
+    // Ensure all necessary sheets exist
+    ensureSheetsExist: async () => {
+        if (!GoogleSheetsService.spreadsheetId) return;
+        console.log('Ensuring all sheets exist...');
+
+        try {
+            const metaUrl = `${SHEETS_API_URL}/${GoogleSheetsService.spreadsheetId}?fields=sheets.properties`;
+            const res = await fetch(metaUrl, {
+                headers: { Authorization: `Bearer ${GoogleSheetsService.accessToken}` }
+            });
+
+            if (!res.ok) {
+                console.warn('Failed to fetch sheet metadata');
+                return;
+            }
+
+            const data = await res.json();
+            const existingSheets = data.sheets?.map((s: any) => s.properties.title) || [];
+
+            // 1. Transactions
+            if (!existingSheets.includes('Transactions')) {
+                await GoogleSheetsService.addSheet('Transactions');
+                await GoogleSheetsService.appendRow('Transactions', ['ID', 'Date', 'Amount', 'Type', 'Category', 'Description', 'Method', 'AccountNumber']);
+            }
+
+            // 2. Categories
+            if (!existingSheets.includes('Categories')) {
+                await GoogleSheetsService.addSheet('Categories');
+                await GoogleSheetsService.appendRow('Categories', ['ID', 'Key', 'Label', 'Icon', 'Color', 'IsDefault']);
+            }
+
+            // 3. Budgets
+            if (!existingSheets.includes('Budgets')) {
+                console.log('Creating missing Budgets sheet...');
+                await GoogleSheetsService.addSheet('Budgets');
+                await GoogleSheetsService.appendRow('Budgets', ['Category', 'Limit', 'Spent']);
+            }
+
+            // 4. BankAccounts
+            if (!existingSheets.includes('BankAccounts')) {
+                await GoogleSheetsService.addSheet('BankAccounts');
+                await GoogleSheetsService.appendRow('BankAccounts', ['ID', 'Name', 'Type', 'Icon', 'Balance']);
+            }
+        } catch (error) {
+            console.error('Error ensuring sheets exist:', error);
         }
     },
 
@@ -421,7 +473,7 @@ export const GoogleSheetsService = {
         if (!GoogleSheetsService.spreadsheetId) return;
 
         const url = `${SHEETS_API_URL}/${GoogleSheetsService.spreadsheetId}:batchUpdate`;
-        await fetch(url, {
+        const res = await fetch(url, {
             method: 'POST',
             headers: {
                 Authorization: `Bearer ${GoogleSheetsService.accessToken}`,
@@ -431,6 +483,13 @@ export const GoogleSheetsService = {
                 requests: [{ addSheet: { properties: { title: sheetName } } }]
             })
         });
+
+        if (!res.ok) {
+            const txt = await res.text();
+            console.error(`Add Sheet '${sheetName}' Failed:`, res.status, txt);
+        } else {
+            console.log(`Add Sheet '${sheetName}' Success`);
+        }
     },
 
     // --- Seed Dummy Data (DISABLED) ---
@@ -447,7 +506,12 @@ export const GoogleSheetsService = {
             headers: { Authorization: `Bearer ${GoogleSheetsService.accessToken}` }
         });
 
-        if (!res.ok) return [];
+        if (!res.ok) {
+            console.log('Budgets sheet not found (or error), attempting to create...');
+            await GoogleSheetsService.addSheet('Budgets');
+            await GoogleSheetsService.appendRow('Budgets', ['Category', 'Limit', 'Spent']);
+            return [];
+        }
 
         const json = await res.json();
         if (!json.values) return [];
