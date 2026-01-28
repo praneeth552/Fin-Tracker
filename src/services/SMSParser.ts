@@ -247,18 +247,24 @@ export const SMSParser = {
         }
 
         // Priority 3: Check all credit keywords
-        for (const pattern of CREDIT_KEYWORDS) {
-            pattern.lastIndex = 0;
-            if (pattern.test(message)) {
-                return 'credit';
-            }
+        // Priority 2.5: Check for explicit Refund/Reversal (Highest priority for credit overrides)
+        if (/refund|reversed|reversal/i.test(message)) {
+            return 'credit';
         }
 
-        // Priority 4: Check all debit keywords
+        // Priority 3: Check all debit keywords (Prioritize over generic "credited")
         for (const pattern of DEBIT_KEYWORDS) {
             pattern.lastIndex = 0;
             if (pattern.test(message)) {
                 return 'debit';
+            }
+        }
+
+        // Priority 4: Check all credit keywords
+        for (const pattern of CREDIT_KEYWORDS) {
+            pattern.lastIndex = 0;
+            if (pattern.test(message)) {
+                return 'credit';
             }
         }
 

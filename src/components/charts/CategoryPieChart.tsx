@@ -27,9 +27,13 @@ interface CategoryData {
 
 interface CategoryPieChartProps {
     isRefreshing?: boolean;
+    type?: 'expense' | 'income';
 }
 
-// Animated segment component
+// ... (AnimatedSegment omitted for brevity if unchanged, but I need to be careful with replace)
+// Actually I can just replace the interface and component definition.
+
+// Animated segment component (unchanged)
 const AnimatedSegment: React.FC<{
     segment: {
         color: string;
@@ -41,6 +45,7 @@ const AnimatedSegment: React.FC<{
     isRefreshing: boolean;
     totalSegments: number;
 }> = ({ segment, index, isRefreshing, totalSegments }) => {
+    // ... implementation unchanged
     const fillAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
@@ -100,7 +105,7 @@ const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 import { useApp } from '../../context/AppContext';
 import { useCategories } from '../../hooks/useCategories';
 
-export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({ isRefreshing = false }) => {
+export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({ isRefreshing = false, type = 'expense' }) => {
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const colors = isDark ? themes.dark : themes.light;
@@ -117,12 +122,12 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({ isRefreshing
     const data: CategoryData[] = React.useMemo(() => {
         const categoryMap = new Map<string, number>();
 
-        // Filter only expenses from filtered transactions
-        const expenses = filteredTransactions.filter(t => t.type === 'expense');
+        // Filter transactions based on type
+        const relevantTransactions = filteredTransactions.filter(t => t.type === type);
 
-        if (expenses.length === 0) return [];
+        if (relevantTransactions.length === 0) return [];
 
-        expenses.forEach(t => {
+        relevantTransactions.forEach(t => {
             const cat = t.category.toLowerCase();
             const amount = t.amount;
             categoryMap.set(cat, (categoryMap.get(cat) || 0) + amount);
@@ -160,7 +165,7 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({ isRefreshing
         }
 
         return sorted;
-    }, [filteredTransactions, t]);
+    }, [filteredTransactions, t, type]);
 
     const total = data.reduce((sum, item) => sum + item.amount, 0);
 

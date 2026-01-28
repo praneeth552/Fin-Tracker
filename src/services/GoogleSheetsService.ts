@@ -15,6 +15,7 @@ export interface Transaction {
     description: string;
     date: string;
     paymentMethod: string;
+    accountNumber?: string;
 }
 
 export const GoogleSheetsService = {
@@ -30,25 +31,44 @@ export const GoogleSheetsService = {
             // Persist token for Headless Task
             await AsyncStorage.setItem('googleAccessToken', tokens.accessToken);
 
-            // 1. Search for existing sheet
+            // 1. Search for existing sheet in regular Drive
+            let foundSpreadsheetId: string | null = null;
+
             const searchUrl = `${DRIVE_API_URL}?q=name='${SHEET_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
-            console.log('Searching for sheet...');
+            console.log('Searching for sheet in Drive...');
             const searchRes = await fetch(searchUrl, {
                 headers: { Authorization: `Bearer ${tokens.accessToken}` }
             });
 
-            if (!searchRes.ok) {
-                const text = await searchRes.text();
-                throw new Error(`Drive Search Failed: ${searchRes.status} ${text}`);
+            if (searchRes.ok) {
+                const searchData = await searchRes.json();
+                console.log('Drive search result:', searchData);
+                if (searchData.files && searchData.files.length > 0) {
+                    foundSpreadsheetId = searchData.files[0].id;
+                }
             }
 
-            const searchData = await searchRes.json();
-            console.log('Search result:', searchData);
+            // 2. If not found in regular Drive, search in appDataFolder (hidden)
+            if (!foundSpreadsheetId) {
+                const appDataSearchUrl = `${DRIVE_API_URL}?q=name='${SHEET_NAME}' and mimeType='application/vnd.google-apps.spreadsheet'&spaces=appDataFolder`;
+                console.log('Searching for sheet in appDataFolder...');
+                const appDataRes = await fetch(appDataSearchUrl, {
+                    headers: { Authorization: `Bearer ${tokens.accessToken}` }
+                });
 
-            if (searchData.files && searchData.files.length > 0) {
-                console.log('Found existing spreadsheet:', searchData.files[0].id);
-                GoogleSheetsService.spreadsheetId = searchData.files[0].id;
-                await AsyncStorage.setItem('userSpreadsheetId', searchData.files[0].id);
+                if (appDataRes.ok) {
+                    const appDataSearch = await appDataRes.json();
+                    console.log('AppDataFolder search result:', appDataSearch);
+                    if (appDataSearch.files && appDataSearch.files.length > 0) {
+                        foundSpreadsheetId = appDataSearch.files[0].id;
+                    }
+                }
+            }
+
+            if (foundSpreadsheetId) {
+                console.log('Found existing spreadsheet:', foundSpreadsheetId);
+                GoogleSheetsService.spreadsheetId = foundSpreadsheetId;
+                await AsyncStorage.setItem('userSpreadsheetId', foundSpreadsheetId);
             } else {
                 console.log('Creating new spreadsheet...');
                 await GoogleSheetsService.createSpreadsheet();
@@ -89,8 +109,50 @@ export const GoogleSheetsService = {
         await AsyncStorage.setItem('userSpreadsheetId', data.spreadsheetId);
         console.log('Created spreadsheet:', data.spreadsheetId);
 
+        // Hide the spreadsheet from user's Drive view by moving it to appDataFolder
+        try {
+            await GoogleSheetsService.hideSpreadsheet(data.spreadsheetId);
+        } catch (hideError) {
+            console.warn('Could not hide spreadsheet (non-critical):', hideError);
+        }
+
         // Add headers
         await GoogleSheetsService.appendRow('Transactions', ['ID', 'Date', 'Amount', 'Type', 'Category', 'Description', 'Method']);
+    },
+
+    // Hide spreadsheet from user's visible Drive by removing it from root
+    hideSpreadsheet: async (fileId: string) => {
+        if (!GoogleSheetsService.accessToken) return;
+
+        // Get current parents of the file
+        const getRes = await fetch(`${DRIVE_API_URL}/${fileId}?fields=parents`, {
+            headers: { Authorization: `Bearer ${GoogleSheetsService.accessToken}` }
+        });
+
+        if (!getRes.ok) {
+            console.warn('Could not get file parents');
+            return;
+        }
+
+        const fileData = await getRes.json();
+        const currentParents = fileData.parents ? fileData.parents.join(',') : '';
+
+        // Move the file: remove from current parents, add to appDataFolder
+        // Note: appDataFolder requires the drive.appdata scope
+        const updateRes = await fetch(`${DRIVE_API_URL}/${fileId}?removeParents=${currentParents}&addParents=appDataFolder`, {
+            method: 'PATCH',
+            headers: {
+                Authorization: `Bearer ${GoogleSheetsService.accessToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (updateRes.ok) {
+            console.log('Spreadsheet hidden from user Drive view');
+        } else {
+            const errorText = await updateRes.text();
+            console.warn('Could not move to appDataFolder:', errorText);
+        }
     },
 
     appendRow: async (sheetTitle: string, values: any[]) => {
@@ -122,7 +184,7 @@ export const GoogleSheetsService = {
 
     createTransaction: async (data: Transaction) => {
         console.log('Creating transaction in Sheets...', data);
-        // ID, Date, Amount, Type, Category, Description, Method
+        // ID, Date, Amount, Type, Category, Description, Method, AccountNumber
         const row = [
             data.id || Date.now().toString(),
             data.date,
@@ -130,7 +192,8 @@ export const GoogleSheetsService = {
             data.type,
             data.category,
             data.description,
-            data.paymentMethod
+            data.paymentMethod,
+            data.accountNumber || ''  // New Column H
         ];
         await GoogleSheetsService.appendRow('Transactions', row);
         return { ...data, id: row[0] }; // Return created transaction
@@ -150,7 +213,7 @@ export const GoogleSheetsService = {
     getTransactions: async () => {
         if (!GoogleSheetsService.spreadsheetId) await GoogleSheetsService.init();
 
-        const url = `${SHEETS_API_URL}/${GoogleSheetsService.spreadsheetId}/values/Transactions!A2:G`;
+        const url = `${SHEETS_API_URL}/${GoogleSheetsService.spreadsheetId}/values/Transactions!A2:H`;
         const res = await fetch(url, {
             headers: { Authorization: `Bearer ${GoogleSheetsService.accessToken}` }
         });
@@ -172,7 +235,8 @@ export const GoogleSheetsService = {
             type: row[3],
             category: row[4],
             description: row[5],
-            paymentMethod: row[6]
+            paymentMethod: row[6],
+            accountNumber: row[7] || undefined
         }));
     },
 
@@ -281,6 +345,7 @@ export const GoogleSheetsService = {
         }
 
         // Build updated row: ID, Date, Amount, Type, Category, Description, Method
+        // Build updated row: ID, Date, Amount, Type, Category, Description, Method, AccountNumber
         const updatedRow = [
             currentRow[0], // ID (unchanged)
             updates.date || currentRow[1],
@@ -288,11 +353,12 @@ export const GoogleSheetsService = {
             updates.type || currentRow[3],
             updates.category !== undefined ? updates.category : currentRow[4],
             updates.description || currentRow[5],
-            updates.paymentMethod || currentRow[6]
+            updates.paymentMethod || currentRow[6],
+            updates.accountNumber !== undefined ? updates.accountNumber : (currentRow[7] || '') // Column H
         ];
 
-        // Update the row
-        const updateUrl = `${SHEETS_API_URL}/${GoogleSheetsService.spreadsheetId}/values/Transactions!A${rowIndex}:G${rowIndex}?valueInputOption=USER_ENTERED`;
+        // Update the row A:H
+        const updateUrl = `${SHEETS_API_URL}/${GoogleSheetsService.spreadsheetId}/values/Transactions!A${rowIndex}:H${rowIndex}?valueInputOption=USER_ENTERED`;
         const updateRes = await fetch(updateUrl, {
             method: 'PUT',
             headers: {

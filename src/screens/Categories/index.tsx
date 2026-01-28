@@ -7,23 +7,32 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Animated, LayoutAnimation, Dimensions, Modal, TextInput, useColorScheme, Platform, Alert, KeyboardAvoidingView, ActivityIndicator, FlatList, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRoute } from '@react-navigation/native';
 import Slider from '@react-native-community/slider';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import LinearGradient from 'react-native-linear-gradient';
 import { Typography } from '../../components/common';
+import { SkeletonContainer, SkeletonItem } from '../../components/common/Skeleton';
 import { useApp, BankAccount, Transaction } from '../../context/AppContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { useCategories } from '../../hooks/useCategories';
 import { themes, spacing } from '../../theme';
 
-const categoryInfo: Record<string, { icon: string; color: string }> = {
-    food: { icon: '🍽️', color: '#3B82F6' },
-    transport: { icon: '🚗', color: '#8B5CF6' },
-    shopping: { icon: '🛒', color: '#EC4899' },
-    bills: { icon: '📄', color: '#10B981' },
-    entertainment: { icon: '🎬', color: '#F59E0B' },
-    health: { icon: '💊', color: '#EF4444' },
-    misc: { icon: '📌', color: '#6B7280' },
+const DEFAULT_LIMITS: Record<string, number> = {
+    food: 5000,
+    transport: 2000,
+    shopping: 3000,
+    bills: 5000,
+    entertainment: 2000,
+    health: 2000,
+    groceries: 5000,
+    rent: 15000,
+    investment: 10000,
+    misc: 1000,
 };
+
+// Legacy categoryInfo removed in favor of useCategories hook
+
 
 // Budget Edit Modal
 const BudgetEditModal: React.FC<{
@@ -36,9 +45,15 @@ const BudgetEditModal: React.FC<{
     const isDark = colorScheme === 'dark';
     const colors = isDark ? themes.dark : themes.light;
     const { t } = useLanguage();
+    const { getCategoryIcon, getCategoryColor, getCategoryLabel } = useCategories();
+
+    // Use passed limit or default 5000
     const [value, setValue] = useState(budget?.limit || 5000);
-    const info = budget ? categoryInfo[budget.category] : null;
-    const categoryLabel = budget ? (t(`categories.${budget.category}`) || budget.category) : '';
+
+    // Get info dynamically
+    const icon = budget ? getCategoryIcon(budget.category) : '💰';
+    const color = budget ? getCategoryColor(budget.category) : colors.primary;
+    const label = budget ? getCategoryLabel(budget.category) : '';
 
     useEffect(() => {
         if (budget) setValue(budget.limit);
@@ -57,14 +72,14 @@ const BudgetEditModal: React.FC<{
             <Pressable style={styles.modalBackdrop} onPress={onClose}>
                 <View style={[styles.modalContent, { backgroundColor: isDark ? colors.card : '#FFF' }]}>
                     <Pressable onPress={(e) => e.stopPropagation()}>
-                        {budget && info && (
+                        {budget && (
                             <>
                                 <View style={styles.modalHeader}>
-                                    <View style={[styles.modalIcon, { backgroundColor: info.color + '20' }]}>
-                                        <Typography variant="h3">{info.icon}</Typography>
+                                    <View style={[styles.modalIcon, { backgroundColor: color + '20' }]}>
+                                        <Typography variant="h3">{icon}</Typography>
                                     </View>
                                     <Typography variant="body" weight="semibold" style={{ marginTop: spacing.sm }}>
-                                        {categoryLabel}
+                                        {label}
                                     </Typography>
                                 </View>
 
@@ -73,7 +88,7 @@ const BudgetEditModal: React.FC<{
                                     style={[styles.amountInputContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F4F4F5' }]}
                                     onPress={() => {/* Focus handled by TextInput */ }}
                                 >
-                                    <Typography variant="body" style={{ color: info.color }}>₹</Typography>
+                                    <Typography variant="body" style={{ color: color }}>₹</Typography>
                                     <TextInput
                                         style={[styles.amountInput, { color: colors.text }]}
                                         value={value.toString()}
@@ -96,9 +111,9 @@ const BudgetEditModal: React.FC<{
                                     step={500}
                                     value={value}
                                     onValueChange={setValue}
-                                    minimumTrackTintColor={info.color}
+                                    minimumTrackTintColor={color}
                                     maximumTrackTintColor={isDark ? '#3F3F46' : '#E4E4E7'}
-                                    thumbTintColor={info.color}
+                                    thumbTintColor={color}
                                 />
 
                                 <View style={styles.sliderLabels}>
@@ -114,7 +129,7 @@ const BudgetEditModal: React.FC<{
                                         </Typography>
                                     </View>
                                     <View style={[styles.progressTrack, { backgroundColor: isDark ? '#27272A' : '#E4E4E7' }]}>
-                                        <View style={[styles.progressFill, { width: `${percentage}%`, backgroundColor: isOver ? '#EF4444' : info.color }]} />
+                                        <View style={[styles.progressFill, { width: `${percentage}%`, backgroundColor: isOver ? '#EF4444' : color }]} />
                                     </View>
                                     <Typography variant="caption" style={{ color: isOver ? '#EF4444' : '#22C55E', marginTop: 4 }}>
                                         {isOver ? `₹${(budget.spent - value).toLocaleString()} ${t('budget.over')}` : `₹${(value - budget.spent).toLocaleString()} ${t('budget.left')}`}
@@ -125,7 +140,7 @@ const BudgetEditModal: React.FC<{
                                     <Pressable style={[styles.modalBtn, { borderColor: colors.border, borderWidth: 1 }]} onPress={onClose}>
                                         <Typography variant="body" color="secondary">{t('wallet.cancel')}</Typography>
                                     </Pressable>
-                                    <Pressable style={[styles.modalBtn, { backgroundColor: info.color }]} onPress={handleSave}>
+                                    <Pressable style={[styles.modalBtn, { backgroundColor: color }]} onPress={handleSave}>
                                         <Typography variant="body" weight="semibold" style={{ color: '#FFF' }}>{t('wallet.save')}</Typography>
                                     </Pressable>
                                 </View>
@@ -434,17 +449,49 @@ const AddAccountModal: React.FC<{
     );
 };
 
+
+
+const CategoriesSkeleton: React.FC<{ isDark: boolean }> = ({ isDark }) => {
+    return (
+        <SkeletonContainer style={{ flex: 1, backgroundColor: isDark ? themes.dark.background : '#F0F8FF' }}>
+            <View style={{ padding: spacing.lg, paddingTop: 60 }}>
+                {/* Tabs */}
+                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 24 }}>
+                    <SkeletonItem width={100} height={36} borderRadius={20} />
+                    <SkeletonItem width={100} height={36} borderRadius={20} />
+                </View>
+
+                {/* Main Card: Portfolio/Total Spent */}
+                <SkeletonItem width="100%" height={160} borderRadius={24} style={{ marginBottom: 24 }} />
+
+                {/* Section Header */}
+                <SkeletonItem width={120} height={20} style={{ marginBottom: 16 }} />
+
+                {/* List of Items */}
+                <View style={{ gap: 12 }}>
+                    {[1, 2, 3, 4].map(i => (
+                        <SkeletonItem key={i} width="100%" height={80} borderRadius={16} />
+                    ))}
+                </View>
+            </View>
+        </SkeletonContainer>
+    );
+}
+
 const CategoriesScreen: React.FC = () => {
     const insets = useSafeAreaInsets();
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const colors = isDark ? themes.dark : themes.light;
     const { t } = useLanguage();
+    const route = useRoute<any>();
+    const { allCategories, getCategoryIcon, getCategoryColor, getCategoryLabel } = useCategories();
 
     const {
         budgets, updateBudget,
         bankAccounts, addBankAccount, updateBankAccount, deleteBankAccount,
-        totalSpent, totalIncome, transactions, refreshData
+        totalSpent, totalIncome, transactions, refreshData, filteredTransactions,
+        isLoading
     } = useApp();
 
     const [refreshing, setRefreshing] = useState(false);
@@ -456,13 +503,34 @@ const CategoriesScreen: React.FC = () => {
     }, [refreshData]);
 
     const [activeTab, setActiveTab] = useState<'accounts' | 'budgets'>('accounts');
+
+    // Handle initial tab from navigation params - Check param ONLY on mount/change
+    useEffect(() => {
+        if (route.params?.initialTab === 'budgets' || route.params?.initialTab === 'accounts') {
+            setActiveTab(route.params.initialTab);
+            // Optional: clear params to prevent getting stuck if needed, but usually fine
+        }
+    }, [route.params]);
     const [selectedBudget, setSelectedBudget] = useState<{ category: string; limit: number; spent: number } | null>(null);
     const [showModal, setShowModal] = useState(false);
     const [showAddAccount, setShowAddAccount] = useState(false);
     const [showStatementModal, setShowStatementModal] = useState(false);
 
+    // Calculate spending per category on the fly (for all categories)
+    const categorySpending = React.useMemo(() => {
+        const spending: Record<string, number> = {};
+        // Filter expenses from the filtered transactions (current month)
+        filteredTransactions.filter(t => t.type === 'expense').forEach(t => {
+            const cat = t.category ? t.category.toLowerCase() : 'uncategorized';
+            spending[cat] = (spending[cat] || 0) + t.amount;
+        });
+        return spending;
+    }, [filteredTransactions]);
+
     const totalBudget = budgets.reduce((sum, b) => sum + b.limit, 0);
     const usedPercentage = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0;
+
+
 
     const handleEdit = (budget: { category: string; limit: number; spent: number }) => {
         setSelectedBudget(budget);
@@ -564,6 +632,10 @@ const CategoriesScreen: React.FC = () => {
             return false;
         });
     };
+
+    if (isLoading || refreshing) {
+        return <CategoriesSkeleton isDark={isDark} />;
+    }
 
     return (
         <View style={[styles.container, { backgroundColor: isDark ? colors.background : '#F9F9FB', paddingTop: insets.top }]}>
@@ -735,37 +807,46 @@ const CategoriesScreen: React.FC = () => {
                                 {t('budget.categories')?.toUpperCase()}
                             </Typography>
 
-                            {budgets.map((budget, index) => {
-                                const info = categoryInfo[budget.category];
-                                if (!info) return null;
-                                const percent = Math.round((budget.spent / budget.limit) * 100);
-                                const isOver = budget.spent > budget.limit;
+                            {allCategories.map((cat, index) => {
+                                // Find existing budget or default
+                                const budget = budgets.find(b => b.category.toLowerCase() === cat.key.toLowerCase());
+                                // Use existing limit, or DEFAULT, or fallback 2000
+                                const limit = budget ? budget.limit : (DEFAULT_LIMITS[cat.key.toLowerCase()] || 2000);
+                                const spent = categorySpending[cat.key.toLowerCase()] || 0;
+
+                                const percent = limit > 0 ? Math.round((spent / limit) * 100) : 0;
+                                const isOver = limit > 0 && spent > limit;
+                                const icon = getCategoryIcon(cat.key);
+                                const color = getCategoryColor(cat.key);
+                                const label = getCategoryLabel(cat.key);
 
                                 return (
                                     <Pressable
-                                        key={`budget-${index}`}
+                                        key={`budget-${cat.key}`}
                                         style={({ pressed }) => [
                                             styles.categoryCard,
                                             { backgroundColor: isDark ? colors.card : '#FFF', opacity: pressed ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }
                                         ]}
-                                        onPress={() => handleEdit(budget)}
+                                        onPress={() => handleEdit({ category: cat.key, limit, spent })}
                                     >
-                                        <View style={[styles.categoryIcon, { backgroundColor: info.color + '15' }]}>
-                                            <Typography variant="lg">{info.icon}</Typography>
+                                        <View style={[styles.categoryIcon, { backgroundColor: color + '15' }]}>
+                                            <Typography variant="lg">{icon}</Typography>
                                         </View>
                                         <View style={styles.categoryContent}>
                                             <View style={styles.categoryHeader}>
-                                                <Typography variant="body" weight="medium">{t(`categories.${budget.category}`) || budget.category}</Typography>
-                                                <Typography variant="bodySmall" weight="semibold" style={{ color: isOver ? '#EF4444' : colors.text }}>
-                                                    {percent}%
-                                                </Typography>
+                                                <Typography variant="body" weight="medium">{label}</Typography>
+                                                {limit > 0 && (
+                                                    <Typography variant="bodySmall" weight="semibold" style={{ color: isOver ? '#EF4444' : colors.text }}>
+                                                        {percent}%
+                                                    </Typography>
+                                                )}
                                             </View>
                                             <Typography variant="caption" color="secondary" style={{ marginBottom: 6 }}>
-                                                ₹{budget.spent.toLocaleString()} of ₹{budget.limit.toLocaleString()}
+                                                ₹{spent.toLocaleString()} {limit > 0 ? `of ₹${limit.toLocaleString()}` : 'spent (No Limit)'}
                                             </Typography>
                                             <AnimatedProgressBar
                                                 progress={percent}
-                                                color={isOver ? '#EF4444' : info.color}
+                                                color={isOver ? '#EF4444' : color}
                                                 bgColor={isDark ? '#27272A' : '#E4E4E7'}
                                                 delay={100 + index * 50}
                                             />

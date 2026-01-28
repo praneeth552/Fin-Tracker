@@ -26,6 +26,7 @@ import { PieChart } from 'react-native-chart-kit';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Typography } from '../../components/common';
+import { SkeletonContainer, SkeletonItem } from '../../components/common/Skeleton';
 import { MonthDropdown, MonthFilter } from '../../components/MonthDropdown';
 import { useApp } from '../../context/AppContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -315,6 +316,34 @@ const AddActionModal: React.FC<{
     );
 };
 
+
+const StatsSkeleton: React.FC<{ isDark: boolean }> = ({ isDark }) => {
+    return (
+        <SkeletonContainer style={{ flex: 1, backgroundColor: isDark ? themes.dark.background : '#F0F8FF' }}>
+            <View style={{ padding: spacing.lg, paddingTop: 60 }}>
+                {/* Header */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 24 }}>
+                    <SkeletonItem width={150} height={28} />
+                    <SkeletonItem width={100} height={32} borderRadius={16} />
+                </View>
+
+                {/* Chart Card */}
+                <SkeletonItem width="100%" height={220} borderRadius={24} style={{ marginBottom: 24 }} />
+
+                {/* Section Header */}
+                <SkeletonItem width={120} height={20} style={{ marginBottom: 16 }} />
+
+                {/* List Items */}
+                <View style={{ gap: 12 }}>
+                    {[1, 2, 3].map(i => (
+                        <SkeletonItem key={i} width="100%" height={60} borderRadius={16} />
+                    ))}
+                </View>
+            </View>
+        </SkeletonContainer>
+    );
+};
+
 const StatsScreen: React.FC = () => {
     const insets = useSafeAreaInsets();
     const colorScheme = useColorScheme();
@@ -323,10 +352,12 @@ const StatsScreen: React.FC = () => {
     const bgColor = isDark ? colors.background : '#FAFAFA';
     const cardBg = isDark ? colors.card : '#FFFFFF';
 
-    const { filteredTransactions, totalSpent, userData, refreshData, selectedMonth, selectedYear, setSelectedMonth } = useApp();
+    const { filteredTransactions, totalSpent, userData, refreshData, selectedMonth, selectedYear, setSelectedMonth, isLoading } = useApp();
     const { t } = useLanguage();
 
     const [refreshing, setRefreshing] = useState(false);
+
+
 
     const onRefresh = async () => {
         setRefreshing(true);
@@ -362,7 +393,9 @@ const StatsScreen: React.FC = () => {
     const actualExpenses = filteredTransactions
         .filter(t => t.type === 'expense')
         .reduce((sum, t) => sum + t.amount, 0);
-    const savingsRate = actualIncome > 0 ? Math.round(((actualIncome - actualExpenses) / actualIncome) * 100) : 0;
+    const savingsRate = actualIncome > 0
+        ? Math.max(0, Math.round(((actualIncome - actualExpenses) / actualIncome) * 100))
+        : 0;
 
     const toggleTask = (id: string | number) => {
         setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
@@ -584,6 +617,10 @@ const StatsScreen: React.FC = () => {
             </Modal>
         );
     };
+
+    if (isLoading || refreshing) {
+        return <StatsSkeleton isDark={isDark} />;
+    }
 
     return (
         <View style={[styles.container, { backgroundColor: bgColor }]}>

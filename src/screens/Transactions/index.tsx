@@ -22,6 +22,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Typography } from '../../components/common';
+import { SkeletonContainer, SkeletonItem } from '../../components/common/Skeleton';
 import { MonthDropdown, MonthFilter } from '../../components/MonthDropdown';
 import { CategorySelectionModal } from '../../components/CategorySelectionModal';
 import { useApp, Transaction } from '../../context/AppContext';
@@ -151,6 +152,46 @@ const TransactionItem: React.FC<{
     );
 };
 
+
+
+const TransactionsSkeleton: React.FC<{ isDark: boolean }> = ({ isDark }) => {
+    return (
+        <SkeletonContainer style={{ flex: 1, backgroundColor: isDark ? themes.dark.background : '#FAFAFA' }}>
+            <View style={{ padding: spacing.lg, paddingTop: 60 }}>
+                {/* Header */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                    <SkeletonItem width={120} height={32} borderRadius={16} />
+                    <SkeletonItem width={100} height={32} borderRadius={16} />
+                </View>
+
+                {/* Filter Tabs */}
+                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 24 }}>
+                    <SkeletonItem width={80} height={32} borderRadius={16} />
+                    <SkeletonItem width={80} height={32} borderRadius={16} />
+                    <SkeletonItem width={80} height={32} borderRadius={16} />
+                </View>
+
+                {/* Section Header */}
+                <SkeletonItem width={100} height={16} style={{ marginBottom: 12 }} />
+
+                {/* List Items */}
+                <View style={{ gap: 12 }}>
+                    {[1, 2, 3, 4, 5].map(i => (
+                        <View key={i} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? themes.dark.card : '#FFF', padding: 12, borderRadius: 12 }}>
+                            <SkeletonItem width={40} height={40} borderRadius={12} style={{ marginRight: 12 }} />
+                            <View style={{ flex: 1 }}>
+                                <SkeletonItem width={120} height={14} style={{ marginBottom: 6 }} />
+                                <SkeletonItem width={80} height={10} />
+                            </View>
+                            <SkeletonItem width={60} height={16} />
+                        </View>
+                    ))}
+                </View>
+            </View>
+        </SkeletonContainer>
+    );
+};
+
 const TransactionsScreen: React.FC = () => {
     const insets = useSafeAreaInsets();
     const colorScheme = useColorScheme();
@@ -159,7 +200,7 @@ const TransactionsScreen: React.FC = () => {
     const bgColor = isDark ? colors.background : '#FAFAFA';
 
     // Use global state with filtered transactions and custom categories
-    const { filteredTransactions, deleteTransaction, selectedMonth, selectedYear, setSelectedMonth, availableMonths, customCategories, refreshData } = useApp();
+    const { filteredTransactions, deleteTransaction, updateTransaction, selectedMonth, selectedYear, setSelectedMonth, availableMonths, customCategories, refreshData, isLoading } = useApp();
     const { t } = useLanguage();
 
     const [refreshing, setRefreshing] = useState(false);
@@ -262,7 +303,48 @@ const TransactionsScreen: React.FC = () => {
         });
     }, [activeFilter, filteredTransactions]);
 
-    // Empty state
+    // State for editing - MUST be before any early returns to follow Rules of Hooks
+    const [editModalVisible, setEditModalVisible] = useState(false);
+    const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
+
+
+
+
+
+    const handleEdit = (tx: Transaction) => {
+        setSelectedTx(tx);
+        setEditModalVisible(true);
+    };
+
+    const handleUpdateCategory = async (category: string, updateRule: boolean, newDescription?: string, newAccountId?: string) => {
+        if (!selectedTx) return;
+
+        // Build update object
+        const updateData: { category: string; description?: string; accountNumber?: string } = { category };
+        if (newDescription) {
+            updateData.description = newDescription;
+        }
+        if (newAccountId !== undefined) {
+            updateData.accountNumber = newAccountId; // Treat accountId as accountNumber for storage
+        }
+
+        await updateTransaction(selectedTx.id, updateData);
+
+        if (updateRule) {
+            const merchant = selectedTx.merchant || selectedTx.description;
+            // Assuming MerchantRulesService is imported or defined elsewhere
+            await MerchantRulesService.setCategoryWithRule(merchant, category);
+        }
+    };
+
+    if (isLoading || refreshing) {
+        return (
+            <View style={{ flex: 1, backgroundColor: bgColor, paddingTop: insets.top }}>
+                <TransactionsSkeleton isDark={isDark} />
+            </View>
+        );
+    }
+
     if (filteredTransactions.length === 0) {
         return (
             <View style={[styles.container, styles.emptyContainer, { backgroundColor: bgColor, paddingTop: insets.top }]}>
@@ -276,28 +358,6 @@ const TransactionsScreen: React.FC = () => {
             </View>
         );
     }
-
-    // State for editing
-    const [editModalVisible, setEditModalVisible] = useState(false);
-    const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
-    const { updateTransaction } = useApp();
-
-    const handleEdit = (tx: Transaction) => {
-        setSelectedTx(tx);
-        setEditModalVisible(true);
-    };
-
-    const handleUpdateCategory = async (category: string, updateRule: boolean) => {
-        if (!selectedTx) return;
-
-        await updateTransaction(selectedTx.id, { category });
-
-        if (updateRule) {
-            const merchant = selectedTx.merchant || selectedTx.description;
-            // Assuming MerchantRulesService is imported or defined elsewhere
-            await MerchantRulesService.setCategoryWithRule(merchant, category);
-        }
-    };
 
     return (
         <View style={[styles.container, { backgroundColor: bgColor, paddingTop: insets.top }]}>

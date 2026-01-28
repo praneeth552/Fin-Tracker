@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, Animated, Dimensions, StatusBar } from 'react-native';
+import { View, StyleSheet, Animated, Dimensions, StatusBar, ActivityIndicator } from 'react-native';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { useAuth } from '../../../App';
 import { Typography } from '../../components/common/Typography';
@@ -14,7 +14,11 @@ const { width, height } = Dimensions.get('window');
 GoogleSignin.configure({
     webClientId: '734044761437-aecdjj4m06u1h0itk4mals5p1t890knl.apps.googleusercontent.com',
     offlineAccess: true,
-    scopes: ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/spreadsheets'],
+    scopes: [
+        'https://www.googleapis.com/auth/drive.file',
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/drive.appdata', // For hiding spreadsheet from user view
+    ],
 });
 
 const GoogleLoginScreen = () => {
@@ -148,9 +152,9 @@ const GoogleLoginScreen = () => {
                     activeOpacity={0.85}
                 >
                     {isSigningIn ? (
-                        <Animated.View style={styles.loader}>
-                            <Icon name="loading" size={24} color={accentColor} />
-                        </Animated.View>
+                        <View style={styles.loader}>
+                            <ActivityIndicator size="small" color={accentColor} />
+                        </View>
                     ) : (
                         <>
                             <View style={styles.googleIconBg}>

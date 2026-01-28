@@ -15,6 +15,7 @@ import {
     Alert,
     ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Typography } from './common';
 import { themes, spacing, borderRadius, createShadows } from '../theme';
 
@@ -60,6 +61,9 @@ export const AutoTrackingModal: React.FC<AutoTrackingModalProps> = ({
                 await PermissionsAndroid.request(
                     PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
                 );
+                // Enable auto-tracking in settings so it starts working immediately
+                await AsyncStorage.setItem('autoTrackingEnabled', 'true');
+                console.log('Auto-tracking enabled in settings');
                 onGrantPermissions();
             } else if (granted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
                 Alert.alert(

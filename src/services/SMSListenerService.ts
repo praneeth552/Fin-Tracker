@@ -178,6 +178,7 @@ const saveToGoogleSheets = async (transaction: ParsedTransaction, shouldQueue: b
             category: transaction.category,
             date: transaction.date,
             paymentMethod: 'auto',
+            accountNumber: transaction.accountNumber, // Pass account number
         });
 
         console.log('[SMSListener] Transaction saved to Google Sheets');

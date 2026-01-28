@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
@@ -9,20 +8,20 @@ import {
     useColorScheme,
     Animated,
     Switch,
+    TextInput,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Typography } from './common';
 import { useCategories } from '../hooks/useCategories';
-import { Transaction } from '../context/AppContext';
+import { Transaction, useApp } from '../context/AppContext';
 import { themes, spacing } from '../theme';
+import AddCategoryModal from './AddCategoryModal';
 
 interface CategorySelectionModalProps {
     visible: boolean;
     onClose: () => void;
     transaction: Transaction | null;
     mode: 'edit' | 'categorize';
-    onConfirm: (category: string, updateRule: boolean) => Promise<void>;
+    onConfirm: (category: string, updateRule: boolean, newDescription?: string, newAccountId?: string) => Promise<void>;
 }
 
 export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
@@ -32,16 +31,58 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
     mode,
     onConfirm
 }) => {
-    const insets = useSafeAreaInsets();
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const colors = isDark ? themes.dark : themes.light;
     const { allCategories } = useCategories();
+    const { bankAccounts } = useApp();
+
+    const linkedAccount = React.useMemo(() => {
+        if (!transaction) return null;
+        if (transaction.accountId) return bankAccounts.find(a => a.id === transaction.accountId);
+        if (transaction.accountNumber) {
+            // Check direct ID match (if persisted manually)
+            const idMatch = bankAccounts.find(a => a.id === transaction.accountNumber);
+            if (idMatch) return idMatch;
+
+            // Fuzzy match: Check if account name contains the number (common pattern: "HDFC - 1234")
+            const numMatch = bankAccounts.find(a => a.name.includes(transaction.accountNumber!));
+            if (numMatch) return numMatch;
+        }
+
+        // Fallback: Try to match Bank Name from Description (e.g. "ICICI: Ref...")
+        if (transaction.description) {
+            const parts = transaction.description.split(':');
+            if (parts.length > 0) {
+                const prefix = parts[0].trim().toLowerCase();
+                // Avoid matching generic prefixes
+                const ignored = ['payment', 'sent', 'received', 'transfer', 'upi', 'neft', 'imps', 'cash', 'vendor', 'shop'];
+                if (prefix.length > 2 && !ignored.includes(prefix)) {
+                    // Check if Account Name contains Prefix OR Prefix contains Account Name
+                    return bankAccounts.find(a =>
+                        a.name.toLowerCase().includes(prefix) ||
+                        prefix.includes(a.name.toLowerCase())
+                    );
+                }
+            }
+        }
+        return null;
+    }, [transaction, bankAccounts]);
 
     const [selectedCategory, setSelectedCategory] = useState<string>('');
+    const [selectedAccount, setSelectedAccount] = useState<string | undefined>(undefined);
     const [updateRule, setUpdateRule] = useState(true);
     const [loading, setLoading] = useState(false);
     const [closing, setClosing] = useState(false);
+    const [editedDescription, setEditedDescription] = useState<string>('');
+    const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
+
+    // Initial load
+    useEffect(() => {
+        if (visible && transaction) {
+            setSelectedAccount(linkedAccount?.id); // Pre-select linked account
+        }
+    }, [visible, transaction, linkedAccount]);
 
     // Animation refs
     const slideAnim = useRef(new Animated.Value(500)).current;
@@ -51,6 +92,7 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
         if (visible && transaction) {
             setClosing(false);
             setSelectedCategory(transaction.category || '');
+            setEditedDescription(transaction.description || '');
             setUpdateRule(true); // Default to true
             slideAnim.setValue(500);
             backdropAnim.setValue(0);
@@ -79,9 +121,17 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
         setLoading(true);
         setSelectedCategory(category);
 
-        // Unified "Instant Save" behavior
+        // Pass edited description if changed from original
+        const descriptionChanged = editedDescription !== transaction.description;
+        const accountChanged = selectedAccount !== (linkedAccount?.id);
+
         setTimeout(async () => {
-            await onConfirm(category, updateRule);
+            await onConfirm(
+                category,
+                updateRule,
+                descriptionChanged ? editedDescription : undefined,
+                accountChanged ? selectedAccount : undefined
+            );
             setLoading(false);
             animateOut();
         }, 50);
@@ -111,14 +161,61 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
 
                     <View style={styles.header}>
                         <Typography variant="caption" color="secondary" align="center" style={{ textTransform: 'uppercase' }}>
-                            {mode === 'edit' ? 'EDIT CATEGORY' : 'CATEGORIZE TRANSACTION'}
+                            {mode === 'edit' ? 'EDIT TRANSACTION' : 'CATEGORIZE TRANSACTION'}
                         </Typography>
                         <Typography variant="h3" weight="bold" align="center" style={{ marginTop: spacing.xs }}>
                             ₹{transaction.amount.toLocaleString()}
                         </Typography>
-                        <Typography variant="caption" color="secondary" align="center" numberOfLines={1}>
-                            {transaction.description}
+
+                        {/* Editable Description */}
+                        <View style={[styles.descriptionInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F4F4F5' }]}>
+                            <TextInput
+                                value={editedDescription}
+                                onChangeText={setEditedDescription}
+                                placeholder="Enter description..."
+                                placeholderTextColor={colors.textMuted}
+                                style={[styles.descriptionTextInput, { color: colors.text }]}
+                                maxLength={100}
+                            />
+                        </View>
+                        <Typography variant="caption" color="secondary" align="center" style={{ marginTop: 4 }}>
+                            Tap to edit name
                         </Typography>
+
+                        {/* Account Selector */}
+                        <View style={{ marginTop: 16, height: 50 }}>
+                            <ScrollView
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                contentContainerStyle={{ gap: 8, paddingHorizontal: 4, alignItems: 'center' }}
+                            >
+                                {bankAccounts.filter(a => a.type !== 'cash').map(acc => {
+                                    const isSelected = selectedAccount === acc.id;
+                                    return (
+                                        <Pressable
+                                            key={acc.id}
+                                            onPress={() => setSelectedAccount(isSelected ? undefined : acc.id)}
+                                            style={{
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                paddingVertical: 6,
+                                                paddingHorizontal: 12,
+                                                borderRadius: 16,
+                                                backgroundColor: isSelected ? (isDark ? '#3F3F46' : '#E4E4E7') : 'transparent',
+                                                borderWidth: 1,
+                                                borderColor: isSelected ? colors.primary : (isDark ? '#3F3F46' : '#E4E4E7'),
+                                                gap: 6
+                                            }}
+                                        >
+                                            <Typography variant="caption">{acc.icon}</Typography>
+                                            <Typography variant="caption" weight={isSelected ? 'bold' : 'medium'} style={{ color: isSelected ? colors.primary : colors.textSecondary }}>
+                                                {acc.name}
+                                            </Typography>
+                                        </Pressable>
+                                    );
+                                })}
+                            </ScrollView>
+                        </View>
                     </View>
 
                     <ScrollView
@@ -153,7 +250,42 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
                                 </Pressable>
                             );
                         })}
+
+                        {/* Add New Category Button */}
+                        <Pressable
+                            style={({ pressed }) => [
+                                styles.catItem,
+                                {
+                                    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F4F4F5',
+                                    borderColor: colors.border,
+                                    borderStyle: 'dashed',
+                                    transform: [{ scale: pressed ? 0.98 : 1 }]
+                                }
+                            ]}
+                            onPress={() => setShowAddCategoryModal(true)}
+                        >
+                            <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center', marginBottom: 4 }}>
+                                <Typography variant="caption" style={{ color: '#FFF', fontSize: 16, lineHeight: 20 }}>+</Typography>
+                            </View>
+                            <Typography
+                                variant="caption"
+                                weight="medium"
+                                style={{ color: colors.textSecondary, fontSize: 10 }}
+                                align="center"
+                            >
+                                Add New
+                            </Typography>
+                        </Pressable>
                     </ScrollView>
+
+                    <AddCategoryModal
+                        visible={showAddCategoryModal}
+                        onClose={() => setShowAddCategoryModal(false)}
+                        onAdd={(newCat) => {
+                            // Optionally auto-select the new category
+                            // handleSelect(newCat.key); // Uncomment if we want immediate selection
+                        }}
+                    />
 
                     {/* Exact Rule Toggle */}
                     <View style={styles.ruleRow}>
@@ -230,4 +362,21 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(59, 130, 246, 0.08)'
     },
     skipBtn: { marginTop: spacing.md, alignSelf: 'center', paddingVertical: spacing.sm },
+
+    // Description Input
+    descriptionInput: {
+        marginTop: spacing.md,
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.sm,
+        borderRadius: 12,
+        minWidth: 200,
+        alignItems: 'center',
+    },
+    descriptionTextInput: {
+        fontSize: 16,
+        fontWeight: '500',
+        textAlign: 'center',
+        minWidth: 200,
+        paddingVertical: 4,
+    },
 });

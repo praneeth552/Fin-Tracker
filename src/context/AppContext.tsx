@@ -149,6 +149,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 type: t.type ? t.type.toLowerCase() : 'expense',
                 date: t.date,
                 paymentMethod: t.paymentMethod ? t.paymentMethod.toLowerCase() : 'cash',
+                accountNumber: t.accountNumber,
             })).filter((t: any) => t.id && t.id.trim().length > 0);
 
             // Deduplicate: Keep only the first occurrence of each ID
@@ -192,11 +193,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     spent: b.category ? (spentByCategory[b.category.toLowerCase()] || 0) : 0
                 }));
                 setBudgets(budgetsWithSpent);
+            } else {
+                setBudgets([]);
             }
 
             // Load Categories from Sheets
             const categoriesFromSheets = await GoogleSheetsService.getCategories();
-            if (categoriesFromSheets.length > 0) {
+            if (categoriesFromSheets) {
                 setCustomCategories(categoriesFromSheets.map((c: any) => ({
                     id: parseInt(c.id) || 0,
                     key: c.key,
@@ -205,6 +208,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     color: c.color,
                     isDefault: c.isDefault
                 })));
+            } else {
+                setCustomCategories([]);
             }
 
             // Load Bank Accounts from Sheets

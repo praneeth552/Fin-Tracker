@@ -41,11 +41,17 @@ export const UncategorizedTransactions: React.FC = () => {
     const [selectedItem, setSelectedItem] = useState<Transaction | null>(null);
     const [modalVisible, setModalVisible] = useState(false);
 
-    const handleCategorize = async (categoryType: string, rememberChoice: boolean) => {
+    const handleCategorize = async (categoryType: string, rememberChoice: boolean, newDescription?: string) => {
         if (!selectedItem) return;
 
+        // Build update object with category and optionally description
+        const updateData: { category: string; description?: string } = { category: categoryType };
+        if (newDescription) {
+            updateData.description = newDescription;
+        }
+
         // Update via Context
-        await updateTransaction(selectedItem.id, { category: categoryType });
+        await updateTransaction(selectedItem.id, updateData);
 
         // Create merchant rule if requested
         if (rememberChoice) {

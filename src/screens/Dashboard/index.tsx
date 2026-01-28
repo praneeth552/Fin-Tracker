@@ -40,6 +40,8 @@ import { DetectedAccountModal } from '../../components/DetectedAccountModal';
 import { UncategorizedTransactions } from '../../components/UncategorizedTransactions';
 import { MonthDropdown, MonthFilter } from '../../components/MonthDropdown';
 import { CategorySelectionModal } from '../../components/CategorySelectionModal';
+import { BudgetPromptCard } from '../../components/BudgetPromptCard';
+import { SkeletonContainer, SkeletonItem } from '../../components/common/Skeleton';
 
 import { MerchantRulesService } from '../../services/MerchantRulesService';
 import { useApp } from '../../context/AppContext';
@@ -125,59 +127,44 @@ const EditBalanceModal: React.FC<{
 };
 
 // Skeleton Loader - Matches actual Dashboard layout precisely
-const SkeletonLoader: React.FC<{ isDark: boolean }> = ({ isDark }) => {
-    const pulseAnim = useRef(new Animated.Value(0.4)).current;
-    const colors = isDark ? themes.dark : themes.light;
+const DashboardSkeleton: React.FC<{ isDark: boolean }> = ({ isDark }) => {
+    const cardBg = isDark ? themes.dark.card : '#FFFFFF';
+    const containerBg = isDark ? themes.dark.background : '#F0F8FF';
 
-    useEffect(() => {
-        const pulse = Animated.loop(
-            Animated.sequence([
-                Animated.timing(pulseAnim, { toValue: 0.8, duration: 700, useNativeDriver: true }),
-                Animated.timing(pulseAnim, { toValue: 0.4, duration: 700, useNativeDriver: true }),
-            ])
-        );
-        pulse.start();
-        return () => pulse.stop();
-    }, []);
-
-    // Better contrast skeleton colors for visibility
-    const skeletonBg = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)';
-    const cardBg = isDark ? colors.card : '#FFFFFF';
-    const containerBg = isDark ? colors.background : '#F0F8FF';
-
-    const SkeletonBox = ({ width, height, style }: { width: number | string; height: number; style?: any }) => (
-        <Animated.View style={[{ width, height, backgroundColor: skeletonBg, borderRadius: 8, opacity: pulseAnim }, style]} />
+    // Helper for box with optional style
+    const Box = ({ width, height, style }: { width: number | string; height: number; style?: any }) => (
+        <SkeletonItem width={width} height={height} style={style} />
     );
 
     return (
-        <View style={[styles.skeletonContainer, { backgroundColor: containerBg }]}>
+        <SkeletonContainer style={[styles.skeletonContainer, { backgroundColor: containerBg }]}>
             {/* Header: Greeting + Month Selector */}
             <View style={styles.skeletonHeader}>
                 <View>
-                    <SkeletonBox width={80} height={12} style={{ marginBottom: 6 }} />
-                    <SkeletonBox width={140} height={28} />
+                    <Box width={80} height={12} style={{ marginBottom: 6 }} />
+                    <Box width={140} height={28} />
                 </View>
-                <SkeletonBox width={100} height={32} style={{ borderRadius: 16 }} />
+                <Box width={100} height={32} style={{ borderRadius: 16 }} />
             </View>
 
             {/* Balance Card */}
             <View style={[styles.skeletonBalanceCard, { backgroundColor: cardBg }]}>
-                <SkeletonBox width={100} height={14} style={{ marginBottom: 12 }} />
-                <SkeletonBox width={180} height={36} style={{ marginBottom: 16 }} />
+                <Box width={100} height={14} style={{ marginBottom: 12 }} />
+                <Box width={180} height={36} style={{ marginBottom: 16 }} />
                 {/* Income / Expenses Row */}
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 16, borderTopWidth: 1, borderTopColor: skeletonBg }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 16, borderTopWidth: 1, borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                        <SkeletonBox width={32} height={32} style={{ borderRadius: 10, marginRight: 8 }} />
+                        <Box width={32} height={32} style={{ borderRadius: 10, marginRight: 8 }} />
                         <View>
-                            <SkeletonBox width={50} height={10} style={{ marginBottom: 4 }} />
-                            <SkeletonBox width={80} height={16} />
+                            <Box width={50} height={10} style={{ marginBottom: 4 }} />
+                            <Box width={80} height={16} />
                         </View>
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                        <SkeletonBox width={32} height={32} style={{ borderRadius: 10, marginRight: 8 }} />
+                        <Box width={32} height={32} style={{ borderRadius: 10, marginRight: 8 }} />
                         <View>
-                            <SkeletonBox width={60} height={10} style={{ marginBottom: 4 }} />
-                            <SkeletonBox width={70} height={16} />
+                            <Box width={60} height={10} style={{ marginBottom: 4 }} />
+                            <Box width={70} height={16} />
                         </View>
                     </View>
                 </View>
@@ -185,17 +172,17 @@ const SkeletonLoader: React.FC<{ isDark: boolean }> = ({ isDark }) => {
 
             {/* Spending Overview Section */}
             <View style={{ marginBottom: spacing.lg }}>
-                <SkeletonBox width={140} height={14} style={{ marginBottom: 16 }} />
+                <Box width={140} height={14} style={{ marginBottom: 16 }} />
                 <View style={[styles.skeletonSpendingCard, { backgroundColor: cardBg }]}>
                     {/* Pie Chart placeholder */}
                     <View style={{ flexDirection: 'row' }}>
-                        <SkeletonBox width={120} height={120} style={{ borderRadius: 60 }} />
+                        <Box width={120} height={120} style={{ borderRadius: 60 }} />
                         <View style={{ flex: 1, marginLeft: 20 }}>
                             {[1, 2, 3, 4].map((i) => (
                                 <View key={i} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                                    <SkeletonBox width={12} height={12} style={{ borderRadius: 6, marginRight: 8 }} />
-                                    <SkeletonBox width={60} height={10} style={{ marginRight: 8 }} />
-                                    <SkeletonBox width={40} height={12} />
+                                    <Box width={12} height={12} style={{ borderRadius: 6, marginRight: 8 }} />
+                                    <Box width={60} height={10} style={{ marginRight: 8 }} />
+                                    <Box width={40} height={12} />
                                 </View>
                             ))}
                         </View>
@@ -205,22 +192,22 @@ const SkeletonLoader: React.FC<{ isDark: boolean }> = ({ isDark }) => {
 
             {/* Tabs */}
             <View style={{ flexDirection: 'row', marginBottom: spacing.md, gap: 8 }}>
-                <SkeletonBox width={'48%' as any} height={40} style={{ borderRadius: 12 }} />
-                <SkeletonBox width={'48%' as any} height={40} style={{ borderRadius: 12 }} />
+                <Box width={'48%'} height={40} style={{ borderRadius: 12 }} />
+                <Box width={'48%'} height={40} style={{ borderRadius: 12 }} />
             </View>
 
             {/* Transaction List */}
             {[1, 2].map((i) => (
-                <Animated.View key={i} style={[styles.skeletonTransactionRow, { backgroundColor: cardBg, opacity: pulseAnim }]}>
-                    <SkeletonBox width={44} height={44} style={{ borderRadius: 12 }} />
+                <View key={i} style={[styles.skeletonTransactionRow, { backgroundColor: cardBg }]}>
+                    <Box width={44} height={44} style={{ borderRadius: 12 }} />
                     <View style={{ flex: 1, marginLeft: 12 }}>
-                        <SkeletonBox width={'60%' as any} height={14} style={{ marginBottom: 6 }} />
-                        <SkeletonBox width={'40%' as any} height={10} />
+                        <Box width={'60%'} height={14} style={{ marginBottom: 6 }} />
+                        <Box width={'40%'} height={10} />
                     </View>
-                    <SkeletonBox width={60} height={16} />
-                </Animated.View>
+                    <Box width={60} height={16} />
+                </View>
             ))}
-        </View>
+        </SkeletonContainer>
     );
 };
 
@@ -299,6 +286,7 @@ const DashboardScreen: React.FC = () => {
 
     const [showAutoTrackingModal, setShowAutoTrackingModal] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
+    const [chartType, setChartType] = useState<'expense' | 'income'>('expense');
     const [showEditModal, setShowEditModal] = useState(false);
 
     // Legacy filter type (kept for MonthDropdown backward compatibility)
@@ -376,6 +364,19 @@ const DashboardScreen: React.FC = () => {
         }
     }, [isAppLoading]);
 
+    // Chart Toggle Animation
+    const chartTabAnim = useRef(new Animated.Value(0)).current;
+    const [chartToggleWidth, setChartToggleWidth] = useState(0);
+
+    useEffect(() => {
+        Animated.spring(chartTabAnim, {
+            toValue: chartType === 'expense' ? 0 : 1,
+            useNativeDriver: true,
+            tension: 60,
+            friction: 9,
+        }).start();
+    }, [chartType]);
+
     useEffect(() => {
         checkAutoTrackingStatus();
     }, []);
@@ -409,27 +410,34 @@ const DashboardScreen: React.FC = () => {
     const bgColor = isDark ? colors.background : '#FAFAFA';
     const cardBg = isDark ? colors.card : '#FFFFFF';
 
+    // State for Transaction Edit - MUST be before any early returns to follow Rules of Hooks
+    const [editCategoryModalVisible, setEditCategoryModalVisible] = useState(false);
+    const [selectedTx, setSelectedTx] = useState<any | null>(null);
+
     if (isAppLoading) {
         return (
             <View style={[styles.container, { backgroundColor: bgColor }]}>
                 <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-                <SkeletonLoader isDark={isDark} />
+                <DashboardSkeleton isDark={isDark} />
             </View>
         );
     }
-
-    // State for Transaction Edit
-    const [editCategoryModalVisible, setEditCategoryModalVisible] = useState(false);
-    const [selectedTx, setSelectedTx] = useState<any | null>(null);
 
     const handleEditTx = (tx: any) => {
         setSelectedTx(tx);
         setEditCategoryModalVisible(true);
     };
 
-    const handleUpdateCategory = async (category: string, updateRule: boolean) => {
+    const handleUpdateCategory = async (category: string, updateRule: boolean, newDescription?: string) => {
         if (!selectedTx) return;
-        await updateTransaction(selectedTx.id, { category });
+
+        // Build update object with category and optionally description
+        const updateData: { category: string; description?: string } = { category };
+        if (newDescription) {
+            updateData.description = newDescription;
+        }
+
+        await updateTransaction(selectedTx.id, updateData);
         if (updateRule) {
             const merchant = selectedTx.merchant || selectedTx.description;
             await MerchantRulesService.setCategoryWithRule(merchant, category);
@@ -529,18 +537,62 @@ const DashboardScreen: React.FC = () => {
                     </Pressable>
                 </Animated.View>
 
-                {/* Spending Overview */}
+                {/* Spending/Income Overview Toggle */}
                 <View style={styles.section}>
                     <View style={styles.sectionHeader}>
-                        <Typography variant="caption" weight="medium" color="secondary" style={styles.sectionLabel}>{t('dashboard.spendingOverview')?.toUpperCase() || 'SPENDING OVERVIEW'}</Typography>
+                        <View
+                            style={{
+                                flexDirection: 'row',
+                                backgroundColor: isDark ? '#27272A' : '#E4E4E7',
+                                borderRadius: 12,
+                                padding: 4,
+                                alignSelf: 'flex-start',
+                                marginBottom: 12
+                            }}
+                            onLayout={(e) => setChartToggleWidth(e.nativeEvent.layout.width)}
+                        >
+                            <Animated.View
+                                style={{
+                                    position: 'absolute',
+                                    top: 4, bottom: 4, left: 4,
+                                    width: (chartToggleWidth - 8) / 2,
+                                    backgroundColor: isDark ? '#3F3F46' : '#FFFFFF',
+                                    borderRadius: 10,
+                                    transform: [{
+                                        translateX: chartTabAnim.interpolate({
+                                            inputRange: [0, 1],
+                                            outputRange: [0, (chartToggleWidth - 8) / 2]
+                                        })
+                                    }],
+                                    shadowColor: "#000",
+                                    shadowOffset: { width: 0, height: 1 },
+                                    shadowOpacity: isDark ? 0.3 : 0.1,
+                                    shadowRadius: 2,
+                                    elevation: 2,
+                                }}
+                            />
+                            <Pressable
+                                onPress={() => setChartType('expense')}
+                                style={{ paddingHorizontal: 16, paddingVertical: 8, width: (chartToggleWidth > 0 ? (chartToggleWidth - 8) / 2 : undefined), alignItems: 'center', minWidth: 100 }}
+                            >
+                                <Typography variant="caption" weight="semibold" style={{ color: chartType === 'expense' ? (isDark ? '#FFF' : '#000') : colors.textSecondary }}>SPENDING</Typography>
+                            </Pressable>
+                            <Pressable
+                                onPress={() => setChartType('income')}
+                                style={{ paddingHorizontal: 16, paddingVertical: 8, width: (chartToggleWidth > 0 ? (chartToggleWidth - 8) / 2 : undefined), alignItems: 'center', minWidth: 100 }}
+                            >
+                                <Typography variant="caption" weight="semibold" style={{ color: chartType === 'income' ? (isDark ? '#FFF' : '#000') : colors.textSecondary }}>INCOME</Typography>
+                            </Pressable>
+                        </View>
                     </View>
                     <Pressable style={[styles.spendingCard, { backgroundColor: cardBg }]}>
-                        <CategoryPieChart isRefreshing={refreshing} />
+                        <CategoryPieChart isRefreshing={refreshing} type={chartType} />
                     </Pressable>
                 </View>
 
                 {/* Dashboard Tabs & List */}
                 <View style={[styles.section, { marginTop: spacing.xl }]}>
+                    <BudgetPromptCard />
                     <View
                         style={[
                             styles.tabContainer,

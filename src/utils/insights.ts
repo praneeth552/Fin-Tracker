@@ -30,7 +30,18 @@ export const generateInsights = (transactions: Transaction[], budgets: any[] = [
     // 1. Savings Rate Insight
     if (totalIncome > 0) {
         const savingsRate = ((totalIncome - totalSpent) / totalIncome) * 100;
-        if (savingsRate < 10) {
+        if (savingsRate < 0) {
+            // Overspending case - expenses exceed income
+            const overspentPercent = Math.round(Math.abs(savingsRate));
+            insights.push({
+                id: 'overspending',
+                title: 'Overspending Alert',
+                description: `You've spent ${overspentPercent}% more than your income this month. Review your expenses.`,
+                type: 'alert',
+                priority: 0,
+                icon: 'alert-circle-outline'
+            });
+        } else if (savingsRate < 10) {
             insights.push({
                 id: 'low-savings',
                 title: 'Low Savings Rate',
