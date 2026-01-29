@@ -41,6 +41,7 @@ import { UncategorizedTransactions } from '../../components/UncategorizedTransac
 import { MonthDropdown, MonthFilter } from '../../components/MonthDropdown';
 import { CategorySelectionModal } from '../../components/CategorySelectionModal';
 import { BudgetPromptCard } from '../../components/BudgetPromptCard';
+import { NotificationAccessPrompt, useNotificationAccessCheck } from '../../components/NotificationAccessPrompt';
 import { SkeletonContainer, SkeletonItem } from '../../components/common/Skeleton';
 
 import { MerchantRulesService } from '../../services/MerchantRulesService';
@@ -319,6 +320,12 @@ const DashboardScreen: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'review' | 'today'>('today');
     const [tabWidth, setTabWidth] = useState(0);
     const tabAnim = useRef(new Animated.Value(1)).current; // 1 for today, 0 for review
+
+    // Track when auto-tracking is enabled to trigger notification access check
+    const [autoTrackingJustEnabled, setAutoTrackingJustEnabled] = useState(false);
+
+    // Notification Access check for Android 13+
+    const { shouldShowPrompt: showNotificationPrompt, dismissPrompt: dismissNotificationPrompt, triggerCheck: triggerNotificationCheck } = useNotificationAccessCheck(autoTrackingJustEnabled);
 
     useEffect(() => {
         Animated.spring(tabAnim, {
@@ -700,6 +707,8 @@ const DashboardScreen: React.FC = () => {
                 onGrantPermissions={() => {
                     setShowAutoTrackingModal(false);
                     AsyncStorage.setItem('hasSeenPermissionModal', 'true');
+                    // Trigger notification access check for Android 13+
+                    setAutoTrackingJustEnabled(prev => !prev);
                 }}
                 onMaybeLater={() => {
                     setShowAutoTrackingModal(false);
@@ -717,6 +726,12 @@ const DashboardScreen: React.FC = () => {
                     onIgnore={ignoreDetectedAccount}
                 />
             )}
+
+            {/* Notification Access Prompt for Android 13+ */}
+            <NotificationAccessPrompt
+                visible={showNotificationPrompt}
+                onClose={dismissNotificationPrompt}
+            />
         </View>
     );
 };

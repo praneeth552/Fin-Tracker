@@ -49,9 +49,9 @@ export const DetectedAccountModal: React.FC<DetectedAccountModalProps> = ({
                         <Typography variant="body" color="secondary" align="center" style={{ marginBottom: 24 }}>
                             We detected activity from <Typography weight="bold">{bankName}</Typography> ending in <Typography weight="bold">xx{accountNumber}</Typography>.
                             {
-/* This is the only part that needed correction. The original had "\n\n" which is an escaped newline. It should be a literal newline character. */
-}
-                            
+                                /* This is the only part that needed correction. The original had "\n\n" which is an escaped newline. It should be a literal newline character. */
+                            }
+
 
                             Would you like to add this account to your wallet for automatic tracking?
                         </Typography>
@@ -64,10 +64,10 @@ export const DetectedAccountModal: React.FC<DetectedAccountModalProps> = ({
                                 <Typography variant="body" color="secondary">No, ignore</Typography>
                             </Pressable>
                             <Pressable
-                                style={[styles.btn, styles.confirmBtn, { backgroundColor: colors.primary }]}
+                                style={[styles.btn, styles.confirmBtn]}
                                 onPress={onConfirm}
                             >
-                                <Typography variant="body" weight="semibold" style={{ color: '#FFF' }}>Yes, add it</Typography>
+                                <Typography variant="body" weight="semibold" style={{ color: '#FFFFFF' }}>Yes, add it</Typography>
                             </Pressable>
                         </View>
                     </Pressable>
@@ -122,6 +122,7 @@ const styles = StyleSheet.create({
         backgroundColor: 'transparent',
     },
     confirmBtn: {
+        backgroundColor: '#3B82F6', // Blue color that works in both modes
         elevation: 2,
     },
 });

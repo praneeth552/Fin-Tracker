@@ -190,7 +190,8 @@
         "notificationAccessAndroidVersion": "Android 13+",
         "notificationAccessMessage": "नए Android वर्शन पर SMS पहचान के लिए नोटिफिकेशन एक्सेस सक्षम करने के लिए यहां टैप करें।",
         "notificationAccessEnabled": "नोटिफिकेशन एक्सेस सक्षम",
-        "notificationAccessEnabledMessage": "आपके डिवाइस पर SMS पहचान पूरी तरह से काम कर रही है।"
+        "notificationAccessEnabledMessage": "आपके डिवाइस पर SMS पहचान पूरी तरह से काम कर रही है।",
+        "noBackendPrivacy": "सारा डेटा आपकी Google Sheets में जाता है। कोई सर्वर, डेटाबेस या ट्रैकिंग नहीं।"
     },
     "categories": {
         "food": "भोजन और खाना",

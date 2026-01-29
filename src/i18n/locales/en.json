@@ -191,7 +191,8 @@
         "notificationAccessAndroidVersion": "Android 13+",
         "notificationAccessMessage": "Tap here to enable Notification Access for reliable SMS detection on newer Android versions.",
         "notificationAccessEnabled": "Notification Access Enabled",
-        "notificationAccessEnabledMessage": "SMS detection is fully working on your device."
+        "notificationAccessEnabledMessage": "SMS detection is fully working on your device.",
+        "noBackendPrivacy": "All data goes to YOUR Google Sheets. No servers, no databases, no tracking."
     },
     "categories": {
         "food": "Food",

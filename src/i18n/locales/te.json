@@ -190,7 +190,8 @@
         "notificationAccessAndroidVersion": "Android 13+",
         "notificationAccessMessage": "కొత్త Android వెర్షన్లలో SMS డిటెక్షన్ కోసం నోటిఫికేషన్ యాక్సెస్ ఎనేబుల్ చేయడానికి ఇక్కడ నొక్కండి.",
         "notificationAccessEnabled": "నోటిఫికేషన్ యాక్సెస్ ఎనేబుల్ చేయబడింది",
-        "notificationAccessEnabledMessage": "మీ పరికరంలో SMS డిటెక్షన్ పూర్తిగా పని చేస్తోంది."
+        "notificationAccessEnabledMessage": "మీ పరికరంలో SMS డిటెక్షన్ పూర్తిగా పని చేస్తోంది.",
+        "noBackendPrivacy": "మొత్తం డేటా మీ Google Sheets కి వెళ్తుంది. సర్వర్లు, డేటాబేస్‌లు, ట్రాకింగ్ లేదు."
     },
     "categories": {
         "food": "ఆహారం & భోజనం",
