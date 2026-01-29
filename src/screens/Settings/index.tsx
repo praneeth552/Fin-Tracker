@@ -24,6 +24,7 @@ import { Typography } from '../../components/common';
 import { themes, spacing, borderRadius } from '../../theme';
 import { useAuth } from '../../../App';
 import { useLanguage } from '../../context/LanguageContext';
+import NotificationAccessModule from '../../native/NotificationAccessModule';
 
 interface SettingsScreenProps {
     navigation: any;
@@ -41,9 +42,13 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
     const [autoTrackingEnabled, setAutoTrackingEnabled] = useState(false);
     const [notificationsEnabled, setNotificationsEnabled] = useState(true);
     const [showLanguagePicker, setShowLanguagePicker] = useState(false);
+    // Android 14+ Notification Access (required for SMS detection)
+    const [needsNotificationAccess, setNeedsNotificationAccess] = useState(false);
+    const [notificationAccessEnabled, setNotificationAccessEnabled] = useState(false);
 
     useEffect(() => {
         loadSettings();
+        checkNotificationAccess();
     }, []);
 
     const loadSettings = async () => {
@@ -55,6 +60,23 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
         } catch (error) {
             console.error('Error loading settings:', error);
         }
+    };
+
+    // Check if device needs and has Notification Access (Android 13+)
+    const checkNotificationAccess = async () => {
+        const needs = await NotificationAccessModule.needsNotificationAccess();
+        setNeedsNotificationAccess(needs);
+        if (needs) {
+            const enabled = await NotificationAccessModule.isEnabled();
+            setNotificationAccessEnabled(enabled);
+        }
+    };
+
+    // Open Notification Access settings
+    const openNotificationAccessSettings = async () => {
+        await NotificationAccessModule.openSettings();
+        // Check again when user returns
+        setTimeout(() => checkNotificationAccess(), 1000);
     };
 
     const handleAutoTrackingToggle = async (value: boolean) => {
@@ -193,6 +215,40 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
                                 </Typography>
                                 <Typography variant="caption" color="secondary" style={{ marginTop: 2, lineHeight: 16 }}>
                                     {t('settings.privacyMessage') || 'We only read transaction messages. OTPs, passwords, and sensitive codes are never accessed.'}
+                                </Typography>
+                            </View>
+                        </View>
+                    )}
+
+                    {/* Android 14+ Notification Access Warning */}
+                    {autoTrackingEnabled && needsNotificationAccess && !notificationAccessEnabled && (
+                        <Pressable
+                            style={[styles.privacyNotice, { backgroundColor: isDark ? 'rgba(251,191,36,0.15)' : 'rgba(251,191,36,0.1)' }]}
+                            onPress={openNotificationAccessSettings}
+                        >
+                            <Icon name="alert-circle-outline" size={16} color="#F59E0B" style={{ marginRight: 8 }} />
+                            <View style={{ flex: 1 }}>
+                                <Typography variant="caption" weight="medium" style={{ color: '#F59E0B' }}>
+                                    {t('settings.notificationAccessRequired') || 'Notification Access Required'} ({t('settings.notificationAccessAndroidVersion') || 'Android 13+'})
+                                </Typography>
+                                <Typography variant="caption" color="secondary" style={{ marginTop: 2, lineHeight: 16 }}>
+                                    {t('settings.notificationAccessMessage') || 'Tap here to enable Notification Access for reliable SMS detection on newer Android versions.'}
+                                </Typography>
+                            </View>
+                            <Icon name="chevron-right" size={16} color="#F59E0B" />
+                        </Pressable>
+                    )}
+
+                    {/* Notification Access Enabled Confirmation */}
+                    {autoTrackingEnabled && needsNotificationAccess && notificationAccessEnabled && (
+                        <View style={[styles.privacyNotice, { backgroundColor: isDark ? 'rgba(34,197,94,0.1)' : 'rgba(34,197,94,0.08)' }]}>
+                            <Icon name="check-circle-outline" size={16} color="#22C55E" style={{ marginRight: 8 }} />
+                            <View style={{ flex: 1 }}>
+                                <Typography variant="caption" weight="medium" style={{ color: '#22C55E' }}>
+                                    {t('settings.notificationAccessEnabled') || 'Notification Access Enabled'}
+                                </Typography>
+                                <Typography variant="caption" color="secondary" style={{ marginTop: 2, lineHeight: 16 }}>
+                                    {t('settings.notificationAccessEnabledMessage') || 'SMS detection is fully working on your device.'}
                                 </Typography>
                             </View>
                         </View>

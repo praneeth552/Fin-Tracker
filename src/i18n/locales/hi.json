@@ -185,7 +185,12 @@
         "askMeLater": "बाद में पूछें",
         "grantPermission": "अनुमति दें",
         "permissionDenied": "अनुमति अस्वीकार",
-        "autoTrackingNeedsSms": "ऑटो-ट्रैकिंग के लिए SMS अनुमति आवश्यक है।"
+        "autoTrackingNeedsSms": "ऑटो-ट्रैकिंग के लिए SMS अनुमति आवश्यक है।",
+        "notificationAccessRequired": "नोटिफिकेशन एक्सेस आवश्यक",
+        "notificationAccessAndroidVersion": "Android 13+",
+        "notificationAccessMessage": "नए Android वर्शन पर SMS पहचान के लिए नोटिफिकेशन एक्सेस सक्षम करने के लिए यहां टैप करें।",
+        "notificationAccessEnabled": "नोटिफिकेशन एक्सेस सक्षम",
+        "notificationAccessEnabledMessage": "आपके डिवाइस पर SMS पहचान पूरी तरह से काम कर रही है।"
     },
     "categories": {
         "food": "भोजन और खाना",

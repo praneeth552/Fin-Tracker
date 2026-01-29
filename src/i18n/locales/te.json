@@ -185,7 +185,12 @@
         "askMeLater": "తర్వాత అడగండి",
         "grantPermission": "అనుమతి ఇవ్వండి",
         "permissionDenied": "అనుమతి నిరాకరించబడింది",
-        "autoTrackingNeedsSms": "ఆటో-ట్రాకింగ్‌కు SMS అనుమతి అవసరం."
+        "autoTrackingNeedsSms": "ఆటో-ట్రాకింగ్‌కు SMS అనుమతి అవసరం.",
+        "notificationAccessRequired": "నోటిఫికేషన్ యాక్సెస్ అవసరం",
+        "notificationAccessAndroidVersion": "Android 13+",
+        "notificationAccessMessage": "కొత్త Android వెర్షన్లలో SMS డిటెక్షన్ కోసం నోటిఫికేషన్ యాక్సెస్ ఎనేబుల్ చేయడానికి ఇక్కడ నొక్కండి.",
+        "notificationAccessEnabled": "నోటిఫికేషన్ యాక్సెస్ ఎనేబుల్ చేయబడింది",
+        "notificationAccessEnabledMessage": "మీ పరికరంలో SMS డిటెక్షన్ పూర్తిగా పని చేస్తోంది."
     },
     "categories": {
         "food": "ఆహారం & భోజనం",

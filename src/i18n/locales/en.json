@@ -186,7 +186,12 @@
         "askMeLater": "Ask Me Later",
         "grantPermission": "Grant Permission",
         "permissionDenied": "Permission Denied",
-        "autoTrackingNeedsSms": "Auto-tracking requires SMS permission."
+        "autoTrackingNeedsSms": "Auto-tracking requires SMS permission.",
+        "notificationAccessRequired": "Notification Access Required",
+        "notificationAccessAndroidVersion": "Android 13+",
+        "notificationAccessMessage": "Tap here to enable Notification Access for reliable SMS detection on newer Android versions.",
+        "notificationAccessEnabled": "Notification Access Enabled",
+        "notificationAccessEnabledMessage": "SMS detection is fully working on your device."
     },
     "categories": {
         "food": "Food",

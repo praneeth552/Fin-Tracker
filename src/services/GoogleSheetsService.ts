@@ -101,6 +101,9 @@ export const GoogleSheetsService = {
 
             const data = await res.json();
             const existingSheets = data.sheets?.map((s: any) => s.properties.title) || [];
+            console.log('Existing Sheets found:', existingSheets);
+
+            // 1. Transactions
 
             // 1. Transactions
             if (!existingSheets.includes('Transactions')) {

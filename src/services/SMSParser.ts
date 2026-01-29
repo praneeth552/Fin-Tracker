@@ -16,7 +16,7 @@ export interface ParsedSMS {
 // ENHANCED: More comprehensive amount patterns
 const AMOUNT_PATTERNS = [
     /(?:Rs\.?|INR|₹)\s*([0-9,]+(?:\.[0-9]{1,2})?)/i,
-    /(?:debited|credited|debit|credit|paid|received|withdrawn|deposit|transferred|spent|sent|refund)\s+(?:of\s+)?(?:Rs\.?|INR|₹)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i,
+    /(?:debited|credited|debit|credit|paid|received|withdrawn|deposit|transferred|spent|sent|refund)\s+(?:of\s+|with\s+)?(?:Rs\.?|INR|₹)?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i,
     /([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:Rs\.?|INR|₹|rupees)/i,
     /Rs\.?\s*([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:Dr|Cr)\.?/i,
     /Rs\.?\s*([0-9,]+(?:\.[0-9]{1,2})?)\s+(?:received|sent|debited|credited)/i,
@@ -54,7 +54,7 @@ const BANK_PATTERNS: Record<string, RegExp> = {
     'SBI': /SBI|State\s*Bank|BW-SBIPSG/i,
     'Axis': /Axis\s*Bank|AXISBK|AX-AXISBK/i,
     'Kotak': /Kotak\s*(?:Mahindra)?|KOTAKBK|BZ-KMBANK/i,
-    'BOB': /Bank\s*of\s*Baroda|BOBSMS|AX-BOBSMS/i,
+    'BOB': /Bank\s*of\s*Baroda|BOBSMS|AX-BOBSMS|\bBOB\b/i,
     'PNB': /Punjab\s*National|PNB|VM-PNBSMS/i,
     'Yes Bank': /Yes\s*Bank|YESBNK/i,
     'IndusInd': /IndusInd\s*Bank|INDBNK/i,
