@@ -191,7 +191,24 @@
         "notificationAccessMessage": "नए Android वर्शन पर SMS पहचान के लिए नोटिफिकेशन एक्सेस सक्षम करने के लिए यहां टैप करें।",
         "notificationAccessEnabled": "नोटिफिकेशन एक्सेस सक्षम",
         "notificationAccessEnabledMessage": "आपके डिवाइस पर SMS पहचान पूरी तरह से काम कर रही है।",
-        "noBackendPrivacy": "सारा डेटा आपकी Google Sheets में जाता है। कोई सर्वर, डेटाबेस या ट्रैकिंग नहीं।"
+        "noBackendPrivacy": "सारा डेटा आपकी Google Sheets में जाता है। कोई सर्वर, डेटाबेस या ट्रैकिंग नहीं।",
+        "upiDetection": "UPI ऐप डिटेक्शन",
+        "upiDetectionDesc": "GPay, PhonePe, Paytm लेन-देन पहचानें",
+        "upiDetectionActive": "UPI डिटेक्शन सक्रिय",
+        "upiDetectionInfo": "GPay, PhonePe, Paytm, CRED और BHIM से लेन-देन तुरंत पहचाने जाएंगे। बैंक SMS देरी होने पर भी काम करता है।",
+        "upiDetectionTip": "सुझाव: सुनिश्चित करें कि आपके फोन सेटिंग्स में UPI ऐप्स के नोटिफिकेशन चालू हैं।"
+    },
+    "transactionSource": {
+        "via": "द्वारा",
+        "gpay": "GPay",
+        "phonepe": "PhonePe",
+        "paytm": "Paytm",
+        "cred": "CRED",
+        "bhim": "BHIM",
+        "amazonpay": "Amazon Pay",
+        "whatsapppay": "WhatsApp Pay",
+        "sms": "SMS",
+        "manual": "मैनुअल"
     },
     "categories": {
         "food": "भोजन और खाना",

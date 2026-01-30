@@ -192,7 +192,24 @@
         "notificationAccessMessage": "Tap here to enable Notification Access for reliable SMS detection on newer Android versions.",
         "notificationAccessEnabled": "Notification Access Enabled",
         "notificationAccessEnabledMessage": "SMS detection is fully working on your device.",
-        "noBackendPrivacy": "All data goes to YOUR Google Sheets. No servers, no databases, no tracking."
+        "noBackendPrivacy": "All data goes to YOUR Google Sheets. No servers, no databases, no tracking.",
+        "upiDetection": "UPI App Detection",
+        "upiDetectionDesc": "Detect GPay, PhonePe, Paytm transactions",
+        "upiDetectionActive": "UPI Detection Active",
+        "upiDetectionInfo": "Transactions from GPay, PhonePe, Paytm, CRED, and BHIM will be detected instantly. Works even if bank SMS is delayed.",
+        "upiDetectionTip": "Tip: Make sure notifications are enabled for your UPI apps in your phone settings."
+    },
+    "transactionSource": {
+        "via": "via",
+        "gpay": "GPay",
+        "phonepe": "PhonePe",
+        "paytm": "Paytm",
+        "cred": "CRED",
+        "bhim": "BHIM",
+        "amazonpay": "Amazon Pay",
+        "whatsapppay": "WhatsApp Pay",
+        "sms": "SMS",
+        "manual": "Manual"
     },
     "categories": {
         "food": "Food",

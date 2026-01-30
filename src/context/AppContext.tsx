@@ -25,6 +25,7 @@ export interface Transaction {
     accountNumber?: string;  // Last 4 digits from SMS-parsed transactions
     isFromSMS?: boolean;
     needsReview?: boolean;
+    source?: string;  // Transaction source: 'GPay', 'PhonePe', 'SMS', 'manual', etc.
 }
 
 export interface BankAccount {
@@ -150,6 +151,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 date: t.date,
                 paymentMethod: t.paymentMethod ? t.paymentMethod.toLowerCase() : 'cash',
                 accountNumber: t.accountNumber,
+                source: t.source,  // Map source field from Sheets
             })).filter((t: any) => t.id && t.id.trim().length > 0);
 
             // Deduplicate: Keep only the first occurrence of each ID

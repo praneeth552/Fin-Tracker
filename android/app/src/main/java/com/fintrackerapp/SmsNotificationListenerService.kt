@@ -8,10 +8,11 @@ import android.service.notification.StatusBarNotification
 import android.util.Log
 
 /**
- * NotificationListenerService for Android 14+ SMS processing
+ * NotificationListenerService for SMS and UPI notification processing
  *
- * Since Android 14+, SMS_RECEIVED broadcasts are restricted to default SMS apps only. This service
- * reads SMS notifications from the notification bar as an alternative.
+ * Handles two types of notifications:
+ * 1. SMS notifications (for Android 14+ where SMS_RECEIVED is restricted)
+ * 2. UPI app notifications (GPay, PhonePe, Paytm, etc.) for instant transaction detection
  *
  * User must grant "Notification Access" permission in device Settings.
  */
@@ -19,6 +20,8 @@ class SmsNotificationListenerService : NotificationListenerService() {
 
     companion object {
         private const val TAG = "SmsNotificationListener"
+        private const val PREFS_NAME = "FinTrackerPrefs"
+        private const val UPI_DETECTION_ENABLED = "upiDetectionEnabled"
 
         // Common SMS app package names
         private val SMS_PACKAGES =
@@ -32,6 +35,18 @@ class SmsNotificationListenerService : NotificationListenerService() {
                         "com.vivo.message", // Vivo Messages
                         "com.nothing.messaging", // Nothing/CMF Messages
                         "com.realme.sms", // Realme Messages
+                )
+
+        // UPI App package names (India)
+        private val UPI_PACKAGES =
+                setOf(
+                        "com.google.android.apps.nbu.paisa.user", // Google Pay
+                        "com.phonepe.app", // PhonePe
+                        "net.one97.paytm", // Paytm
+                        "in.amazon.mShop.android.shopping", // Amazon Pay
+                        "com.dreamplug.androidapp", // CRED
+                        "in.org.npci.upiapp", // BHIM
+                        "com.whatsapp", // WhatsApp Pay
                 )
 
         // Bank/Financial sender patterns
@@ -142,12 +157,27 @@ class SmsNotificationListenerService : NotificationListenerService() {
 
         val packageName = sbn.packageName
 
-        // Only process notifications from SMS apps
-        if (!SMS_PACKAGES.contains(packageName)) {
+        // Determine notification source
+        val isSmsApp = SMS_PACKAGES.contains(packageName)
+        val isUpiApp = UPI_PACKAGES.contains(packageName)
+
+        // Skip if not from SMS or UPI app
+        if (!isSmsApp && !isUpiApp) {
             return
         }
 
-        Log.d(TAG, "SMS notification from package: $packageName")
+        // For UPI apps, check if UPI detection is enabled
+        if (isUpiApp) {
+            val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            val upiEnabled = prefs.getBoolean(UPI_DETECTION_ENABLED, false)
+            if (!upiEnabled) {
+                Log.d(TAG, "UPI detection disabled, ignoring notification from: $packageName")
+                return
+            }
+        }
+
+        val source = if (isUpiApp) "upi" else "sms"
+        Log.d(TAG, "$source notification from package: $packageName")
 
         try {
             val notification = sbn.notification
@@ -158,21 +188,29 @@ class SmsNotificationListenerService : NotificationListenerService() {
             val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
             val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString() ?: text
 
-            // Use bigText if available (contains full SMS), otherwise use text
+            // Use bigText if available (contains full content), otherwise use text
             val messageBody = if (bigText.length > text.length) bigText else text
             val sender = title // Usually the sender name/number
 
-            Log.d(TAG, "SMS from: $sender, body length: ${messageBody.length}")
+            Log.d(TAG, "From: $sender, body length: ${messageBody.length}")
 
             // Check if it's a financial transaction
-            if (isTransactionSms(sender, messageBody)) {
-                Log.d(TAG, "Valid transaction SMS detected, starting headless task")
+            val isTransaction =
+                    if (isUpiApp) {
+                        isUpiTransaction(messageBody)
+                    } else {
+                        isTransactionSms(sender, messageBody)
+                    }
+
+            if (isTransaction) {
+                Log.d(TAG, "Valid transaction detected ($source), starting headless task")
 
                 // Start HeadlessJS service to process
                 val serviceIntent = Intent(this, SmsHeadlessTaskService::class.java)
                 serviceIntent.putExtra("sender", sender)
                 serviceIntent.putExtra("message", messageBody)
-                serviceIntent.putExtra("source", "notification")
+                serviceIntent.putExtra("source", source)
+                serviceIntent.putExtra("packageName", packageName)
 
                 try {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -185,7 +223,7 @@ class SmsNotificationListenerService : NotificationListenerService() {
                     Log.e(TAG, "Failed to start HeadlessJS service", e)
                 }
             } else {
-                Log.d(TAG, "Non-transaction SMS ignored")
+                Log.d(TAG, "Non-transaction notification ignored")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error processing notification", e)
@@ -231,6 +269,50 @@ class SmsNotificationListenerService : NotificationListenerService() {
 
         if (isTransaction) {
             Log.d(TAG, "SMS accepted: Valid transaction")
+        }
+
+        return isTransaction
+    }
+
+    /**
+     * Check if UPI notification is a financial transaction UPI notifications have different format
+     * than SMS - usually simpler
+     */
+    private fun isUpiTransaction(message: String): Boolean {
+        val messageUpper = message.uppercase()
+
+        // PRIVACY: Exclude sensitive/OTP messages
+        if (SENSITIVE_PATTERNS.any { messageUpper.contains(it) }) {
+            Log.d(TAG, "UPI notification rejected: Contains sensitive/OTP content")
+            return false
+        }
+
+        // UPI transaction indicators
+        val upiKeywords =
+                listOf(
+                        "PAID",
+                        "SENT",
+                        "RECEIVED",
+                        "DEBITED",
+                        "CREDITED",
+                        "PAYMENT",
+                        "TRANSFERRED",
+                        "MONEY",
+                        "SUCCESSFUL"
+                )
+
+        val hasUpiKeyword = upiKeywords.any { messageUpper.contains(it) }
+
+        // Amount patterns (must have rupee amount)
+        val hasAmount =
+                messageUpper.contains(Regex("(RS\\.?|INR\\.?|₹)\\s*\\d")) ||
+                        messageUpper.contains(Regex("\\d+(\\.\\d{1,2})?\\s*(RS\\.?|INR|RUPEES)"))
+
+        // Must have both a keyword and an amount to be considered a transaction
+        val isTransaction = hasUpiKeyword && hasAmount
+
+        if (isTransaction) {
+            Log.d(TAG, "UPI notification accepted: Valid transaction")
         }
 
         return isTransaction

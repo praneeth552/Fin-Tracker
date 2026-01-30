@@ -9,7 +9,7 @@ import com.facebook.react.uimanager.ViewManager
 class FinTrackerPackage : ReactPackage {
 
     override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
-        return listOf(NotificationAccessModule(reactContext))
+        return listOf(NotificationAccessModule(reactContext), UPIDetectionModule(reactContext))
     }
 
     override fun createViewManagers(

@@ -16,6 +16,7 @@ import {
     Linking,
     Platform,
     PermissionsAndroid,
+    NativeModules,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -45,6 +46,8 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
     // Android 14+ Notification Access (required for SMS detection)
     const [needsNotificationAccess, setNeedsNotificationAccess] = useState(false);
     const [notificationAccessEnabled, setNotificationAccessEnabled] = useState(false);
+    // UPI Notification Detection (separate toggle)
+    const [upiDetectionEnabled, setUpiDetectionEnabled] = useState(false);
 
     useEffect(() => {
         loadSettings();
@@ -55,8 +58,10 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
         try {
             const autoTracking = await AsyncStorage.getItem('autoTrackingEnabled');
             const notifications = await AsyncStorage.getItem('notificationsEnabled');
+            const upiDetection = await AsyncStorage.getItem('upiDetectionEnabled');
             if (autoTracking !== null) setAutoTrackingEnabled(autoTracking === 'true');
             if (notifications !== null) setNotificationsEnabled(notifications === 'true');
+            if (upiDetection !== null) setUpiDetectionEnabled(upiDetection === 'true');
         } catch (error) {
             console.error('Error loading settings:', error);
         }
@@ -140,6 +145,39 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
     const handleNotificationsToggle = async (value: boolean) => {
         setNotificationsEnabled(value);
         await AsyncStorage.setItem('notificationsEnabled', value.toString());
+    };
+
+    // Handle UPI notification detection toggle
+    const handleUpiDetectionToggle = async (value: boolean) => {
+        // First check if user has notification access enabled (required for UPI detection)
+        if (value && needsNotificationAccess && !notificationAccessEnabled) {
+            Alert.alert(
+                'Notification Access Required',
+                'UPI notification detection requires Notification Access permission. Please enable it first.',
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Enable', onPress: openNotificationAccessSettings }
+                ]
+            );
+            return;
+        }
+
+        setUpiDetectionEnabled(value);
+        await AsyncStorage.setItem('upiDetectionEnabled', value.toString());
+
+        // Also update SharedPreferences for native Android (used by SmsNotificationListenerService)
+        if (Platform.OS === 'android') {
+            try {
+                const { UPIDetectionModule } = NativeModules;
+                if (UPIDetectionModule) {
+                    await UPIDetectionModule.setEnabled(value);
+                }
+            } catch (error) {
+                console.log('UPI native module error:', error);
+            }
+        }
+
+        console.log(`UPI Detection ${value ? 'enabled' : 'disabled'}`);
     };
 
     const openAppSettings = () => {
@@ -249,6 +287,47 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
                                 </Typography>
                                 <Typography variant="caption" color="secondary" style={{ marginTop: 2, lineHeight: 16 }}>
                                     {t('settings.notificationAccessEnabledMessage') || 'SMS detection is fully working on your device.'}
+                                </Typography>
+                            </View>
+                        </View>
+                    )}
+
+                    <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+                    {/* UPI App Detection Toggle */}
+                    <View style={styles.settingItem}>
+                        <View style={styles.settingInfo}>
+                            <View style={[styles.iconBg, { backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.1)' }]}>
+                                <Icon name="cellphone-nfc" size={20} color="#6366F1" />
+                            </View>
+                            <View style={styles.settingText}>
+                                <Typography variant="body" weight="medium">{t('settings.upiDetection') || 'UPI App Detection'}</Typography>
+                                <Typography variant="caption" color="secondary">
+                                    {t('settings.upiDetectionDesc') || 'Detect GPay, PhonePe, Paytm transactions'}
+                                </Typography>
+                            </View>
+                        </View>
+                        <Switch
+                            value={upiDetectionEnabled}
+                            onValueChange={handleUpiDetectionToggle}
+                            trackColor={{ false: colors.border, true: isDark ? 'rgba(99,102,241,0.3)' : 'rgba(99,102,241,0.3)' }}
+                            thumbColor={upiDetectionEnabled ? '#6366F1' : colors.textMuted}
+                        />
+                    </View>
+
+                    {/* UPI Detection Info */}
+                    {upiDetectionEnabled && (
+                        <View style={[styles.privacyNotice, { backgroundColor: isDark ? 'rgba(99,102,241,0.1)' : 'rgba(99,102,241,0.08)' }]}>
+                            <Icon name="information-outline" size={16} color="#6366F1" style={{ marginRight: 8 }} />
+                            <View style={{ flex: 1 }}>
+                                <Typography variant="caption" weight="medium" style={{ color: '#6366F1' }}>
+                                    {t('settings.upiDetectionActive') || 'UPI Detection Active'}
+                                </Typography>
+                                <Typography variant="caption" color="secondary" style={{ marginTop: 2, lineHeight: 16 }}>
+                                    {t('settings.upiDetectionInfo') || 'Transactions from GPay, PhonePe, Paytm, CRED, and BHIM will be detected instantly. Works even if bank SMS is delayed.'}
+                                </Typography>
+                                <Typography variant="caption" color="secondary" style={{ marginTop: 6, lineHeight: 16, fontStyle: 'italic' }}>
+                                    💡 {t('settings.upiDetectionTip') || 'Tip: Make sure notifications are enabled for your UPI apps in your phone settings.'}
                                 </Typography>
                             </View>
                         </View>

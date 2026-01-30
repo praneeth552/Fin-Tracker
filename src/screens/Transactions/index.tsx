@@ -132,10 +132,13 @@ const TransactionItem: React.FC<{
                     </View>
                     <View style={styles.infoCol}>
                         <Typography variant="body" weight="medium">{item.description}</Typography>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, flexWrap: 'wrap' }}>
                             <Typography variant="caption" color="secondary">
                                 {item.merchant || item.category} • {item.type}
                             </Typography>
+                            {item.source && (
+                                <SourceBadge source={item.source} isDark={isDark} />
+                            )}
                             <Icon name="pencil-outline" size={14} color={colors.textMuted} style={{ marginLeft: 6 }} />
                         </View>
                     </View>
@@ -152,6 +155,43 @@ const TransactionItem: React.FC<{
     );
 };
 
+// Source Badge Component with i18n support
+const SourceBadge: React.FC<{ source: string; isDark: boolean }> = ({ source, isDark }) => {
+    const { t } = useLanguage();
+
+    // Map source to translation key
+    const getSourceLabel = (src: string): string => {
+        const sourceKey = src.toLowerCase().replace(/\s/g, '');
+        const translated = t(`transactionSource.${sourceKey}`);
+        // If translation exists and is different from key, use it; otherwise use original
+        return translated && !translated.includes('transactionSource.') ? translated : src;
+    };
+
+    const viaText = t('transactionSource.via') || 'via';
+    const sourceLabel = getSourceLabel(source);
+
+    return (
+        <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            marginLeft: 6,
+            backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.1)',
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+            borderRadius: 4,
+        }}>
+            <Icon
+                name={source.toLowerCase().includes('sms') ? 'message-text' : 'cellphone-nfc'}
+                size={10}
+                color="#6366F1"
+                style={{ marginRight: 3 }}
+            />
+            <Typography variant="caption" style={{ color: '#6366F1', fontSize: 10 }}>
+                {viaText} {sourceLabel}
+            </Typography>
+        </View>
+    );
+};
 
 
 const TransactionsSkeleton: React.FC<{ isDark: boolean }> = ({ isDark }) => {

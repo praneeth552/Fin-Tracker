@@ -191,7 +191,24 @@
         "notificationAccessMessage": "కొత్త Android వెర్షన్లలో SMS డిటెక్షన్ కోసం నోటిఫికేషన్ యాక్సెస్ ఎనేబుల్ చేయడానికి ఇక్కడ నొక్కండి.",
         "notificationAccessEnabled": "నోటిఫికేషన్ యాక్సెస్ ఎనేబుల్ చేయబడింది",
         "notificationAccessEnabledMessage": "మీ పరికరంలో SMS డిటెక్షన్ పూర్తిగా పని చేస్తోంది.",
-        "noBackendPrivacy": "మొత్తం డేటా మీ Google Sheets కి వెళ్తుంది. సర్వర్లు, డేటాబేస్‌లు, ట్రాకింగ్ లేదు."
+        "noBackendPrivacy": "మొత్తం డేటా మీ Google Sheets కి వెళ్తుంది. సర్వర్లు, డేటాబేస్‌లు, ట్రాకింగ్ లేదు.",
+        "upiDetection": "UPI యాప్ డిటెక్షన్",
+        "upiDetectionDesc": "GPay, PhonePe, Paytm లావాదేవీలు గుర్తించండి",
+        "upiDetectionActive": "UPI డిటెక్షన్ యాక్టివ్",
+        "upiDetectionInfo": "GPay, PhonePe, Paytm, CRED మరియు BHIM నుండి లావాదేవీలు వెంటనే గుర్తించబడతాయి. బ్యాంక్ SMS ఆలస్యమైనా పని చేస్తుంది.",
+        "upiDetectionTip": "చిట్కా: మీ ఫోన్ సెట్టింగ్‌లలో UPI యాప్‌ల నోటిఫికేషన్లు ఎనేబుల్ అయ్యాయో నిర్ధారించుకోండి."
+    },
+    "transactionSource": {
+        "via": "ద్వారా",
+        "gpay": "GPay",
+        "phonepe": "PhonePe",
+        "paytm": "Paytm",
+        "cred": "CRED",
+        "bhim": "BHIM",
+        "amazonpay": "Amazon Pay",
+        "whatsapppay": "WhatsApp Pay",
+        "sms": "SMS",
+        "manual": "మాన్యువల్"
     },
     "categories": {
         "food": "ఆహారం & భోజనం",
