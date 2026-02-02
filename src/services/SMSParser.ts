@@ -179,6 +179,9 @@ const IGNORE_PATTERNS = [
     /balance\s*is/i, // "Balance is Rs 500" - Not a transaction, just status
     /unsuccessful/i,
     /pending/i,
+    /scheduled\s+(?:for|on)/i, // "Scheduled for debit" - Future
+    /is\s+scheduled/i,         // "Payment is scheduled" - Future
+    /mandate\s+successful/i,   // "Mandate setup successful" - Not a transaction
 ];
 
 export const SMSParser = {

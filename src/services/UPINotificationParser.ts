@@ -76,6 +76,9 @@ const IGNORE_PATTERNS = [
     /balance/i,   // "Check balance"
     /unsuccessful/i,
     /pending/i,
+    /scheduled\s+(?:for|on)/i,
+    /is\s+scheduled/i,
+    /mandate\s+successful/i,
 ];
 
 // Sensitive patterns to exclude (OTPs, passwords)
