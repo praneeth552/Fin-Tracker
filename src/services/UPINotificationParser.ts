@@ -54,13 +54,28 @@ const REF_PATTERNS = [
 const DEBIT_KEYWORDS = [
     'paid', 'sent', 'debited', 'paid to', 'sent to',
     'payment to', 'transferred to', 'paid at',
-    'purchase', 'spent', 'debit'
+    'purchase', 'spent', 'debit', 'withdraw'
 ];
 
 // Credit indicators
 const CREDIT_KEYWORDS = [
     'received', 'credited', 'received from', 'got',
-    'money received', 'payment from', 'credit'
+    'money received', 'payment from', 'credit',
+    'sent you',  // "X sent you Rs.Y" -> Credit
+    'added to',  // "Money added to wallet" -> Credit
+    'refund',    // "Refund received" -> Credit
+];
+
+// Patterns to IGNORE (Not transactions, or failed)
+const IGNORE_PATTERNS = [
+    /failed/i,
+    /declined/i,
+    /request/i,   // "Request received" != Money received
+    /reminder/i,
+    /due/i,
+    /balance/i,   // "Check balance"
+    /unsuccessful/i,
+    /pending/i,
 ];
 
 // Sensitive patterns to exclude (OTPs, passwords)
@@ -75,6 +90,8 @@ const SENSITIVE_PATTERNS = [
     /do.?not.?share/i,
     /valid.?for/i,
     /expires?.?in/i,
+    /login/i,
+    /auth/i
 ];
 
 class UPINotificationParserClass {
@@ -93,6 +110,12 @@ class UPINotificationParserClass {
         // Check for sensitive content (OTPs, etc.)
         if (this.isSensitiveMessage(message)) {
             console.log('[UPIParser] Rejected: Sensitive content');
+            return null;
+        }
+
+        // Check for ignored patterns (Failed, Request, etc.)
+        if (this.isIgnoredMessage(message)) {
+            console.log('[UPIParser] Rejected: Ignored pattern (Failed/Request)');
             return null;
         }
 
@@ -147,6 +170,13 @@ class UPINotificationParserClass {
      */
     private isSensitiveMessage(message: string): boolean {
         return SENSITIVE_PATTERNS.some(pattern => pattern.test(message));
+    }
+
+    /**
+     * Check if message should be ignored (Failed, Request, etc)
+     */
+    private isIgnoredMessage(message: string): boolean {
+        return IGNORE_PATTERNS.some(pattern => pattern.test(message));
     }
 
     /**

@@ -16,6 +16,7 @@ export interface Transaction {
     date: string;
     paymentMethod: string;
     accountNumber?: string;
+    source?: string;  // Transaction source: 'GPay', 'PhonePe', 'SMS', 'manual', etc.
 }
 
 export const GoogleSheetsService = {
@@ -239,7 +240,7 @@ export const GoogleSheetsService = {
 
     createTransaction: async (data: Transaction) => {
         console.log('Creating transaction in Sheets...', data);
-        // ID, Date, Amount, Type, Category, Description, Method, AccountNumber
+        // ID, Date, Amount, Type, Category, Description, Method, AccountNumber, Source
         const row = [
             data.id || Date.now().toString(),
             data.date,
@@ -248,7 +249,8 @@ export const GoogleSheetsService = {
             data.category,
             data.description,
             data.paymentMethod,
-            data.accountNumber || ''  // New Column H
+            data.accountNumber || '',  // Column H
+            data.source || ''  // Column I - Source (GPay, PhonePe, SMS, manual, etc.)
         ];
         await GoogleSheetsService.appendRow('Transactions', row);
         return { ...data, id: row[0] }; // Return created transaction
@@ -268,7 +270,7 @@ export const GoogleSheetsService = {
     getTransactions: async () => {
         if (!GoogleSheetsService.spreadsheetId) await GoogleSheetsService.init();
 
-        const url = `${SHEETS_API_URL}/${GoogleSheetsService.spreadsheetId}/values/Transactions!A2:H`;
+        const url = `${SHEETS_API_URL}/${GoogleSheetsService.spreadsheetId}/values/Transactions!A2:I`;  // Extended to column I for source
         const res = await fetch(url, {
             headers: { Authorization: `Bearer ${GoogleSheetsService.accessToken}` }
         });
@@ -291,7 +293,8 @@ export const GoogleSheetsService = {
             category: row[4],
             description: row[5],
             paymentMethod: row[6],
-            accountNumber: row[7] || undefined
+            accountNumber: row[7] ? String(row[7]) : undefined,
+            source: row[8] || undefined  // Column I - Transaction source
         }));
     },
 
@@ -371,7 +374,7 @@ export const GoogleSheetsService = {
         if (!GoogleSheetsService.spreadsheetId) await GoogleSheetsService.init();
 
         // Get all transactions to find the row
-        const url = `${SHEETS_API_URL}/${GoogleSheetsService.spreadsheetId}/values/Transactions!A:G`;
+        const url = `${SHEETS_API_URL}/${GoogleSheetsService.spreadsheetId}/values/Transactions!A:I`;
         const res = await fetch(url, {
             headers: { Authorization: `Bearer ${GoogleSheetsService.accessToken}` }
         });
@@ -400,7 +403,7 @@ export const GoogleSheetsService = {
         }
 
         // Build updated row: ID, Date, Amount, Type, Category, Description, Method
-        // Build updated row: ID, Date, Amount, Type, Category, Description, Method, AccountNumber
+        // Build updated row: ID, Date, Amount, Type, Category, Description, Method, AccountNumber, Source
         const updatedRow = [
             currentRow[0], // ID (unchanged)
             updates.date || currentRow[1],
@@ -409,11 +412,12 @@ export const GoogleSheetsService = {
             updates.category !== undefined ? updates.category : currentRow[4],
             updates.description || currentRow[5],
             updates.paymentMethod || currentRow[6],
-            updates.accountNumber !== undefined ? updates.accountNumber : (currentRow[7] || '') // Column H
+            updates.accountNumber !== undefined ? updates.accountNumber : (currentRow[7] || ''), // Column H
+            updates.source !== undefined ? updates.source : (currentRow[8] || '') // Column I
         ];
 
-        // Update the row A:H
-        const updateUrl = `${SHEETS_API_URL}/${GoogleSheetsService.spreadsheetId}/values/Transactions!A${rowIndex}:H${rowIndex}?valueInputOption=USER_ENTERED`;
+        // Update the row A:I
+        const updateUrl = `${SHEETS_API_URL}/${GoogleSheetsService.spreadsheetId}/values/Transactions!A${rowIndex}:I${rowIndex}?valueInputOption=USER_ENTERED`;
         const updateRes = await fetch(updateUrl, {
             method: 'PUT',
             headers: {
@@ -576,7 +580,7 @@ export const GoogleSheetsService = {
         if (!json.values) return [];
 
         return json.values.map((row: any[]) => ({
-            id: row[0],
+            id: String(row[0]),
             name: row[1],
             type: row[2]?.toLowerCase() || 'bank',
             icon: row[3],

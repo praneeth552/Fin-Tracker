@@ -305,12 +305,43 @@ export const CategorySelectionModal: React.FC<CategorySelectionModalProps> = ({
                         />
                     </View>
 
+                    {/* Save / Cancel Button */}
                     <Pressable
-                        style={styles.skipBtn}
-                        onPress={animateOut}
+                        style={[
+                            styles.skipBtn,
+                            mode === 'edit' && {
+                                backgroundColor: colors.primary,
+                                paddingHorizontal: 32,
+                                borderRadius: 24,
+                            }
+                        ]}
+                        onPress={() => {
+                            // If in edit mode, Always Save
+                            if (mode === 'edit') {
+                                if (selectedCategory) {
+                                    // Pass selectedAccount directly (even if unchanged) to ensure persistence
+                                    onConfirm(
+                                        selectedCategory,
+                                        updateRule,
+                                        editedDescription !== transaction.description ? editedDescription : undefined,
+                                        selectedAccount // Always pass the current selection
+                                    );
+                                    // Manually close since we aren't calling handleSelect logic which does it
+                                    setLoading(false);
+                                    animateOut();
+                                }
+                            } else {
+                                // Otherwise act as Cancel/Skip (categorize mode)
+                                animateOut();
+                            }
+                        }}
                     >
-                        <Typography variant="body" color="secondary">
-                            {mode === 'edit' ? 'Cancel' : 'Skip for now'}
+                        <Typography
+                            variant="body"
+                            weight={mode === 'edit' ? "bold" : "medium"}
+                            color={mode === 'edit' ? "inverse" : "secondary"}
+                        >
+                            {mode === 'edit' ? 'Save Changes' : 'Skip for now'}
                         </Typography>
                     </Pressable>
                 </Animated.View>

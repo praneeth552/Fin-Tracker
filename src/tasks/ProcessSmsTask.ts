@@ -218,7 +218,7 @@ const ProcessSmsTask = async (data: TaskData) => {
             category: transaction.category || 'uncategorized',
             date: transaction.date,
             paymentMethod: 'auto',
-            // Note: source field could be added to GoogleSheetsService if needed
+            source: transaction.source, // Column I - Source (GPay, PhonePe, SMS, etc.)
         });
 
         console.log(`ProcessSmsTask: Transaction saved to Google Sheets! (source: ${transaction.source})`);

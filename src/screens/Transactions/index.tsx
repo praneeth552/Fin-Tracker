@@ -360,12 +360,14 @@ const TransactionsScreen: React.FC = () => {
         if (!selectedTx) return;
 
         // Build update object
-        const updateData: { category: string; description?: string; accountNumber?: string } = { category };
+        const updateData: { category: string; description?: string; accountNumber?: string } = {
+            category,
+            // Always update account number. If undefined (unselected), set to empty string (unlink).
+            accountNumber: newAccountId || ''
+        };
+
         if (newDescription) {
             updateData.description = newDescription;
-        }
-        if (newAccountId !== undefined) {
-            updateData.accountNumber = newAccountId; // Treat accountId as accountNumber for storage
         }
 
         await updateTransaction(selectedTx.id, updateData);

@@ -162,7 +162,19 @@ const AccountStatementModal: React.FC<AccountStatementModalProps> = ({ visible, 
     if (!account) return null;
 
     // Filter transactions for this account
-    const accountTransactions = transactions.filter(t => t.accountId === account.id);
+    const accountTransactions = transactions.filter(t => {
+        // 1. Direct match by accountId (if set in memory)
+        if (t.accountId === account.id) return true;
+
+        // 2. Direct match by accountNumber (if manually linked via ID)
+        // Ensure string comparison to handle cases where Sheets returns numbers
+        if (String(t.accountNumber) === String(account.id)) return true;
+
+        // 3. Fuzzy match by accountNumber (if SMS parsed 4 digits matches account name eg. "HDFC - 1234")
+        if (t.accountNumber && account.name.includes(t.accountNumber)) return true;
+
+        return false;
+    });
 
     // Calculate totals
     const totalIncome = accountTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
@@ -218,57 +230,64 @@ const AccountStatementModal: React.FC<AccountStatementModalProps> = ({ visible, 
                         {accountTransactions.length} TRANSACTION{accountTransactions.length !== 1 ? 'S' : ''}
                     </Typography>
 
-                    {accountTransactions.length === 0 ? (
-                        <View style={styles.emptyState}>
-                            <Icon name="receipt" size={48} color={colors.textMuted} />
-                            <Typography variant="body" color="secondary" style={{ marginTop: spacing.md, textAlign: 'center' }}>
-                                No transactions for this account yet.
-                            </Typography>
-                            <Typography variant="caption" color="secondary" style={{ textAlign: 'center', marginTop: 4 }}>
-                                Add transactions using this account to see them here.
-                            </Typography>
-                        </View>
-                    ) : (
-                        <ScrollView showsVerticalScrollIndicator={false}>
-                            {accountTransactions.map((tx) => (
-                                <View
-                                    key={tx.id}
-                                    style={[styles.transactionItem, { backgroundColor: bgColor }]}
-                                >
-                                    <View style={[
-                                        styles.txIcon,
-                                        { backgroundColor: tx.type === 'income' ? '#22C55E20' : '#EF444420' }
-                                    ]}>
-                                        <Icon
-                                            name={tx.type === 'income' ? 'arrow-down-bold' : 'arrow-up-bold'}
-                                            size={18}
-                                            color={tx.type === 'income' ? '#22C55E' : '#EF4444'}
-                                        />
-                                    </View>
-                                    <View style={{ flex: 1, marginLeft: spacing.md }}>
-                                        <Typography variant="body" weight="medium" numberOfLines={1}>
-                                            {tx.description || tx.category || 'Transaction'}
-                                        </Typography>
-                                        <Typography variant="caption" color="secondary">
-                                            {new Date(tx.date).toLocaleDateString('en-IN', {
-                                                day: 'numeric',
-                                                month: 'short',
-                                                year: 'numeric'
-                                            })}
-                                            {tx.category ? ` • ${tx.category}` : ''}
-                                        </Typography>
-                                    </View>
-                                    <Typography
-                                        variant="body"
-                                        weight="semibold"
-                                        style={{ color: tx.type === 'income' ? '#22C55E' : '#EF4444' }}
+                    {/* DEBUG INFO REMOVED */}
+
+
+
+
+                    <ScrollView
+                        contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
+                        showsVerticalScrollIndicator={false}
+                    >
+                        {accountTransactions.length === 0 ? (
+                            <View style={styles.emptyState}>
+                                <Icon name="receipt" size={48} color={colors.textMuted} style={{ opacity: 0.5, marginBottom: 16 }} />
+                                <Typography variant="body" color="secondary" style={{ textAlign: 'center' }}>
+                                    No transactions linked to this account yet.
+                                </Typography>
+                            </View>
+                        ) : (
+                            <View>
+                                {accountTransactions.map((tx) => (
+                                    <View
+                                        key={tx.id}
+                                        style={[styles.transactionItem, { backgroundColor: bgColor }]}
                                     >
-                                        {tx.type === 'income' ? '+' : '-'}₹{tx.amount.toLocaleString()}
-                                    </Typography>
-                                </View>
-                            ))}
-                        </ScrollView>
-                    )}
+                                        <View style={[
+                                            styles.txIcon,
+                                            { backgroundColor: tx.type === 'income' ? '#22C55E20' : '#EF444420' }
+                                        ]}>
+                                            <Icon
+                                                name={tx.type === 'income' ? 'arrow-down-bold' : 'arrow-up-bold'}
+                                                size={18}
+                                                color={tx.type === 'income' ? '#22C55E' : '#EF4444'}
+                                            />
+                                        </View>
+                                        <View style={{ flex: 1, marginLeft: spacing.md }}>
+                                            <Typography variant="body" weight="medium" numberOfLines={1}>
+                                                {tx.description || tx.category || 'Transaction'}
+                                            </Typography>
+                                            <Typography variant="caption" color="secondary">
+                                                {new Date(tx.date).toLocaleDateString('en-IN', {
+                                                    day: 'numeric',
+                                                    month: 'short',
+                                                    year: 'numeric'
+                                                })}
+                                                {tx.category ? ` • ${tx.category}` : ''}
+                                            </Typography>
+                                        </View>
+                                        <Typography
+                                            variant="body"
+                                            weight="semibold"
+                                            style={{ color: tx.type === 'income' ? '#22C55E' : '#EF4444' }}
+                                        >
+                                            {tx.type === 'income' ? '+' : '-'}₹{tx.amount.toLocaleString()}
+                                        </Typography>
+                                    </View>
+                                ))}
+                            </View>
+                        )}
+                    </ScrollView>
                 </View>
             </View>
         </Modal>
@@ -281,7 +300,7 @@ const AccountsScreen: React.FC = () => {
     const isDark = colorScheme === 'dark';
     const colors = isDark ? themes.dark : themes.light;
 
-    const { bankAccounts, addBankAccount, totalIncome, totalSpent, transactions, refreshData } = useApp();
+    const { bankAccounts, addBankAccount, totalIncome, totalSpent, transactions, filteredTransactions, refreshData, selectedMonth, selectedYear } = useApp();
     const [showAddModal, setShowAddModal] = useState(false);
     const [selectedAccount, setSelectedAccount] = useState<BankAccount | null>(null);
     const [showStatementModal, setShowStatementModal] = useState(false);
@@ -404,7 +423,7 @@ const AccountsScreen: React.FC = () => {
                 visible={showStatementModal}
                 onClose={() => setShowStatementModal(false)}
                 account={selectedAccount}
-                transactions={transactions}
+                transactions={filteredTransactions}
             />
         </View>
     );

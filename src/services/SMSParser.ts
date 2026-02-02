@@ -169,11 +169,28 @@ const AUTO_CATEGORIES: Record<string, string[]> = {
     // 'transfer' is INTENTIONALLY omitted - we want those to be "needs review"
 };
 
+// Patterns to IGNORE (Not transactions, or failed)
+const IGNORE_PATTERNS = [
+    /failed/i,
+    /declined/i,
+    /request/i,
+    /reminder/i,
+    /due/i,
+    /balance\s*is/i, // "Balance is Rs 500" - Not a transaction, just status
+    /unsuccessful/i,
+    /pending/i,
+];
+
 export const SMSParser = {
     /**
      * Check if a message is a bank transaction SMS
      */
     isTransactionSMS: (message: string): boolean => {
+        // Check for ignored patterns first
+        if (IGNORE_PATTERNS.some(pattern => pattern.test(message))) {
+            return false;
+        }
+
         const hasAmount = AMOUNT_PATTERNS.some(pattern => {
             pattern.lastIndex = 0; // Reset regex
             return pattern.test(message);

@@ -86,7 +86,7 @@ class SmsHeadlessTaskService : HeadlessJsTaskService() {
             return HeadlessJsTaskConfig(
                     "ProcessSmsTask", // Task name registered in JS
                     data, // Task data
-                    5000, // Timeout (5 seconds - task completes quickly)
+                    60000, // Timeout (60 seconds - allow time for network calls)
                     true // Allow task in foreground
             )
         }

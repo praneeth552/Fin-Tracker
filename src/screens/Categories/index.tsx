@@ -594,40 +594,29 @@ const CategoriesScreen: React.FC = () => {
 
         const accName = account.name.toLowerCase();
 
-        // Extract "Bank Name" by removing digits and special chars
-        // e.g. "HDFC - 1234" -> "hdfc"
-        // e.g. "My SBI Account" -> "my sbi account"
-        const bankName = accName.replace(/[^a-z\s]/g, '').trim();
-        const bankNameParts = bankName.split(/\s+/).filter(p => p.length > 2); // Only matches words > 2 chars
-
         // Extract account number from account name (e.g., "BOB - 2314" -> "2314")
         const accountNumberMatch = account.name.match(/(\d{4})/);
-        const accountNumber = accountNumberMatch ? accountNumberMatch[1] : null;
+        const nameDigits = accountNumberMatch ? accountNumberMatch[1] : null;
 
-        return transactions.filter(t => {
+        // Use filteredTransactions to respect global month filter
+        return filteredTransactions.filter(t => {
             const desc = (t.description || '').toLowerCase();
 
-            // Match by accountId
+            // 1. Match by accountId (if set in memory)
             if (t.accountId === account.id) return true;
 
-            // Match by accountNumber field in transaction
-            if (accountNumber && t.accountNumber === accountNumber) return true;
+            // 2. Direct match by accountNumber (Manual Link ID match) - Check both string/number types
+            if (t.accountNumber && String(t.accountNumber) === String(account.id)) return true;
 
-            // Match by description containing account number pattern
-            if (accountNumber && desc.includes(accountNumber)) return true;
+            // 3. Match by accountNumber field in transaction (SMS logic where t.accountNumber = "1234")
+            // Note: nameDigits comes from the account name regex above
+            if (nameDigits && t.accountNumber === nameDigits) return true;
 
-            // Fuzzy Match: Account Name in Description
+            // 4. Fuzzy Match: Name Digits in Description
+            if (nameDigits && desc.includes(nameDigits)) return true;
+
+            // 5. Fuzzy Match: Account Name in Description (e.g. "Slice")
             if (accName.length > 2 && desc.includes(accName)) return true;
-
-            // Fuzzy Match: Bank Name Parts in Description
-            // If any significant part of the account name (e.g. "HDFC") appears in description
-            if (bankNameParts.length > 0) {
-                // Check if description starts with valid bank name (high confidence)
-                // e.g. "HDFC: Merchant" starts with "hdfc"
-                if (bankNameParts.some(part => desc.startsWith(part) || desc.includes(`${part}:`) || desc.includes(`${part} `))) {
-                    return true;
-                }
-            }
 
             return false;
         });

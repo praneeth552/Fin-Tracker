@@ -23,18 +23,35 @@ class SmsNotificationListenerService : NotificationListenerService() {
         private const val PREFS_NAME = "FinTrackerPrefs"
         private const val UPI_DETECTION_ENABLED = "upiDetectionEnabled"
 
-        // Common SMS app package names
+        // Common SMS app package names - Extended list for compatibility
         private val SMS_PACKAGES =
                 setOf(
                         "com.google.android.apps.messaging", // Google Messages
                         "com.android.mms", // Stock Android SMS
+                        "com.android.messaging", // AOSP Messages
                         "com.samsung.android.messaging", // Samsung Messages
                         "com.oneplus.mms", // OnePlus Messages
-                        "com.miui.sms", // Xiaomi Messages
+                        "com.miui.sms", // Xiaomi Messages (older)
+                        "com.xiaomi.midrop", // Xiaomi Messages (newer)
+                        "com.android.mms.service", // Xiaomi Messages service
                         "com.oppo.mms", // Oppo Messages
+                        "com.coloros.mms", // ColorOS (Oppo/Realme) Messages
                         "com.vivo.message", // Vivo Messages
+                        "com.iqoo.mms", // iQOO Messages
                         "com.nothing.messaging", // Nothing/CMF Messages
                         "com.realme.sms", // Realme Messages
+                        "com.motorola.messaging", // Motorola Messages
+                        "com.huawei.message", // Huawei Messages
+                        "com.hihonor.mms", // Honor Messages
+                        "com.asus.message", // Asus Messages
+                        "com.lenovo.mms", // Lenovo Messages
+                        "org.thoughtcrime.securesms", // Signal (if used for SMS)
+                        "com.textra", // Textra SMS
+                        "com.jb.gosms", // GO SMS
+                        "com.handcent.app.nextsms", // Handcent SMS
+                        "com.sonyericsson.conversations", // Sony Messages
+                        "com.lge.message", // LG Messages
+                        "com.htc.sense.mms", // HTC Messages
                 )
 
         // UPI App package names (India)
@@ -157,12 +174,24 @@ class SmsNotificationListenerService : NotificationListenerService() {
 
         val packageName = sbn.packageName
 
+        // DEBUG: Log ALL notification packages to help diagnose issues
+        // This helps find SMS app package names on devices where detection isn't working
+        Log.d(TAG, "📱 Notification received from: $packageName")
+
         // Determine notification source
         val isSmsApp = SMS_PACKAGES.contains(packageName)
         val isUpiApp = UPI_PACKAGES.contains(packageName)
 
-        // Skip if not from SMS or UPI app
+        // Skip if not from SMS or UPI app, but log for debugging
         if (!isSmsApp && !isUpiApp) {
+            // Log potential SMS apps that we might be missing
+            if (packageName.contains("sms", ignoreCase = true) ||
+                            packageName.contains("mms", ignoreCase = true) ||
+                            packageName.contains("message", ignoreCase = true) ||
+                            packageName.contains("messaging", ignoreCase = true)
+            ) {
+                Log.w(TAG, "⚠️ Potential SMS app not in our list: $packageName")
+            }
             return
         }
 
