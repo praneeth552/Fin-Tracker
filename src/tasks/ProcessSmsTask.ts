@@ -46,12 +46,18 @@ const ProcessSmsTask = async (data: TaskData) => {
     console.log('Source:', source);
     if (data.packageName) console.log('Package:', data.packageName);
 
-    try {
-        let parsed: ParsedTransaction | null = null;
+    let parsed: ParsedTransaction | null = null;
+    let transaction: any = null;
 
+    try {
         // Route to appropriate parser based on source
         if (source === 'upi') {
-            const upiParsed = UPINotificationParser.parse(data.message, data.packageName);
+            // CRITICAL FIX: UPI Apps often split info between Title (sender) and Body (message)
+            // e.g. Title: "Paid to Zomato", Body: "Rs 250"
+            // We concatenate them to ensure the parser gets the full context.
+            const fullUpiMessage = `${data.sender} ${data.message}`;
+            const upiParsed = UPINotificationParser.parse(fullUpiMessage, data.packageName);
+
             if (upiParsed) {
                 parsed = {
                     amount: upiParsed.amount,
@@ -116,7 +122,7 @@ const ProcessSmsTask = async (data: TaskData) => {
 
         // Convert to transaction with source indicator
         const transactionId = `txn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const transaction = {
+        transaction = {
             id: transactionId,
             amount: parsed.amount,
             type: parsed.type === 'credit' ? 'income' : 'expense',
@@ -141,25 +147,26 @@ const ProcessSmsTask = async (data: TaskData) => {
         }
 
         // Store detected bank account for "Add to Wallet" feature (SMS only)
-        if (source === 'sms' && parsed.bank && parsed.accountNumber) {
+        if (source === 'sms' && parsed?.bank && parsed?.accountNumber) {
             try {
+                const validParsed = parsed; // Capture for closure
                 const DETECTED_ACCOUNTS_KEY = '@fintracker_detected_accounts';
                 const existing = await AsyncStorage.getItem(DETECTED_ACCOUNTS_KEY);
                 const accounts = existing ? JSON.parse(existing) : [];
 
                 // Check if already in detected list
                 const alreadyDetected = accounts.some((a: any) =>
-                    a.bank === parsed.bank && a.accountNumber === parsed.accountNumber
+                    a.bank === validParsed.bank && a.accountNumber === validParsed.accountNumber
                 );
 
                 if (!alreadyDetected) {
                     accounts.push({
-                        bank: parsed.bank,
-                        accountNumber: parsed.accountNumber,
+                        bank: validParsed.bank,
+                        accountNumber: validParsed.accountNumber,
                         timestamp: Date.now()
                     });
                     await AsyncStorage.setItem(DETECTED_ACCOUNTS_KEY, JSON.stringify(accounts));
-                    console.log(`ProcessSmsTask: New bank account detected: ${parsed.bank} xx${parsed.accountNumber}`);
+                    console.log(`ProcessSmsTask: New bank account detected: ${validParsed.bank} xx${validParsed.accountNumber}`);
                 }
             } catch (accError) {
                 console.error('ProcessSmsTask: Failed to save detected account', accError);
@@ -168,98 +175,79 @@ const ProcessSmsTask = async (data: TaskData) => {
 
         console.log('ProcessSmsTask: Created transaction:', transaction);
 
+        // ============ QUEUE FIRST STRATEGY (Optimistic) ============
+        // Save to Queue IMMEDIATELY to prevent data loss on timeout (60s limit)
+        const PENDING_OPS_KEY = '@fintracker_pending_operations';
+        const opId = `op-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const newOp = {
+            id: opId,
+            type: 'create',
+            entity: 'transaction',
+            data: {
+                id: transaction.id,
+                amount: transaction.amount,
+                type: (transaction.type === 'income' ? 'INCOME' : 'EXPENSE'),
+                description: transaction.description,
+                category: transaction.category || 'uncategorized',
+                date: transaction.date,
+                paymentMethod: 'auto',
+                source: transaction.source,
+            },
+            createdAt: Date.now(),
+            retryCount: 0
+        };
+
+        try {
+            const pending = await AsyncStorage.getItem(PENDING_OPS_KEY);
+            const queue = pending ? JSON.parse(pending) : [];
+            queue.push(newOp);
+            await AsyncStorage.setItem(PENDING_OPS_KEY, JSON.stringify(queue));
+            console.log('ProcessSmsTask: Transaction QUEUED securely (Queue First Strategy)');
+        } catch (qErr) {
+            console.error('ProcessSmsTask: Failed to queue transaction locally!', qErr);
+            // If storage fails, we try to proceed to sync anyway, but risk data loss if sync fails.
+        }
+
         // Get stored Google tokens
         const accessToken = await AsyncStorage.getItem('googleAccessToken');
         const spreadsheetId = await AsyncStorage.getItem('userSpreadsheetId');
 
         if (!accessToken || !spreadsheetId) {
-            // Queue for later sync when user opens app
-            console.log('ProcessSmsTask: No Google auth, queuing transaction locally');
-
-            // Match OfflineCache.ts structure and key
-            const PENDING_OPS_KEY = '@fintracker_pending_operations';
-            const pending = await AsyncStorage.getItem(PENDING_OPS_KEY);
-            const queue = pending ? JSON.parse(pending) : [];
-
-            const newOp = {
-                id: `op-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                type: 'create',
-                entity: 'transaction',
-                data: {
-                    id: transaction.id,
-                    amount: transaction.amount,
-                    type: (transaction.type === 'income' ? 'INCOME' : 'EXPENSE'),
-                    description: transaction.description,
-                    category: transaction.category || 'uncategorized',
-                    date: transaction.date,
-                    paymentMethod: 'auto',
-                    source: transaction.source, // Include source
-                },
-                createdAt: Date.now(),
-                retryCount: 0
-            };
-
-            queue.push(newOp);
-            await AsyncStorage.setItem(PENDING_OPS_KEY, JSON.stringify(queue));
-            console.log('ProcessSmsTask: Transaction queued for sync');
+            console.log('ProcessSmsTask: No auth tokens, leaving in queue.');
             return;
         }
 
-        // Save to Google Sheets using createTransaction method
-        // Set tokens manually for headless context
-        GoogleSheetsService.setAuth(accessToken, spreadsheetId);
-
-        // Save to Google Sheets using createTransaction method
-        await GoogleSheetsService.createTransaction({
-            id: transaction.id,
-            amount: transaction.amount,
-            type: (transaction.type === 'income' ? 'INCOME' : 'EXPENSE'),
-            description: transaction.description,
-            category: transaction.category || 'uncategorized',
-            date: transaction.date,
-            paymentMethod: 'auto',
-            source: transaction.source, // Column I - Source (GPay, PhonePe, SMS, etc.)
-        });
-
-        console.log(`ProcessSmsTask: Transaction saved to Google Sheets! (source: ${transaction.source})`);
-    } catch (error) {
-        console.error('ProcessSmsTask: Error processing', error);
-
-        // Queue for retry on error
+        // Attempt Sync
         try {
-            // For error recovery, try basic SMS parsing to at least queue the transaction
-            const parsed = await SMSParser.parse(data.message);
-            if (parsed) {
-                const transactionId = `txn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                const PENDING_OPS_KEY = '@fintracker_pending_operations';
-                const pending = await AsyncStorage.getItem(PENDING_OPS_KEY);
-                const queue = pending ? JSON.parse(pending) : [];
+            GoogleSheetsService.setAuth(accessToken, spreadsheetId);
 
-                const newOp = {
-                    id: `op-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                    type: 'create',
-                    entity: 'transaction',
-                    data: {
-                        id: transactionId,
-                        amount: parsed.amount,
-                        type: (parsed.type === 'credit' ? 'INCOME' : 'EXPENSE'),
-                        description: parsed.merchant || 'Transaction',
-                        category: parsed.autoCategory || 'uncategorized',
-                        date: new Date().toISOString().split('T')[0],
-                        paymentMethod: 'auto',
-                        source: data.source?.toUpperCase() || 'SMS',
-                    },
-                    createdAt: Date.now(),
-                    retryCount: 0
-                };
+            await GoogleSheetsService.createTransaction({
+                id: transaction.id,
+                amount: transaction.amount,
+                type: (transaction.type === 'income' ? 'INCOME' : 'EXPENSE'),
+                description: transaction.description,
+                category: transaction.category || 'uncategorized',
+                date: transaction.date,
+                paymentMethod: 'auto',
+                source: transaction.source, // Column I
+            });
 
-                queue.push(newOp);
-                await AsyncStorage.setItem(PENDING_OPS_KEY, JSON.stringify(queue));
-                console.log('ProcessSmsTask: Queued for retry');
-            }
-        } catch (queueError) {
-            console.error('ProcessSmsTask: Failed to queue', queueError);
+            console.log(`ProcessSmsTask: Transaction saved to Google Sheets! (source: ${transaction.source})`);
+
+            // SUCCESS: Remove from Queue
+            const freshPending = await AsyncStorage.getItem(PENDING_OPS_KEY);
+            let freshQueue = freshPending ? JSON.parse(freshPending) : [];
+            freshQueue = freshQueue.filter((op: any) => op.id !== opId);
+            await AsyncStorage.setItem(PENDING_OPS_KEY, JSON.stringify(freshQueue));
+            console.log('ProcessSmsTask: Removed from queue (Sync Success)');
+
+        } catch (syncError) {
+            console.error('ProcessSmsTask: Sync failed (will remain in queue)', syncError);
+            // DO NOTHING - Item is already in queue.
         }
+
+    } catch (error) {
+        console.error('ProcessSmsTask: Critical Error processing', error);
     }
 };
 
