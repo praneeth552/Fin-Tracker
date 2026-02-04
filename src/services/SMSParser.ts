@@ -111,15 +111,58 @@ const CREDIT_KEYWORDS = [
     /refund\s*of/i,
 ];
 
-// Merchant extraction
+// Merchant extraction - ordered by specificity (bank-specific patterns first)
 const MERCHANT_PATTERNS = [
-    /(?:at|to|from|@)\s+([A-Za-z0-9\s&\-\.]+?)(?:\s+(?:on|Ref|UPI|via|using)|[.\s]*$)/i,
-    /(?:VPA|UPI)\s*[:\s]*([a-z0-9._@\-]+)/i,
-    /(?:paid\s*to|transferred\s*to|received\s*from|sent\s+to)\s+([A-Za-z0-9\s&\-]+)/i,
+    // ============ BANK-SPECIFIC PATTERNS ============
+
+    // Slice: "to ERUKULLA SAIGANESH (UPI Ref: 123)"
+    /(?:sent\s+.*\s+to|paid\s+to|transferred\s+to)\s+([A-Za-z\s]+?)\s*\((?:UPI|Ref)/i,
+    /(?:received\s+.*\s+from)\s+([A-Za-z\s]+?)\s*\((?:UPI|Ref)/i,
+
+    // HDFC: "debited for Rs 500.00 at SWIGGY via UPI" / "to VPA saipraneeth@okaxis info:"
+    /(?:at|to)\s+([A-Za-z0-9\s&\-\.]+?)\s+(?:via\s+UPI|UPI|Info:)/i,
+    /to\s+VPA\s+([a-z0-9._@\-]+)\s/i,
+
+    // ICICI: "paid Rs.100 to MERCHANT for"  / "to VPA merchant@icici"
+    /paid\s+(?:Rs\.?|INR|₹)?\s*[\d,\.]+\s+to\s+([A-Za-z0-9\s&\-\.]+?)\s+(?:for|Ref)/i,
+    /to\s+VPA\s+([a-z0-9._]+)@[a-z]+/i,
+
+    // SBI: "transferred Rs 500 to MERCHANT Ref#123"
+    /transferred\s+(?:Rs\.?|INR|₹)?\s*[\d,\.]+\s+to\s+([A-Za-z0-9\s&\-\.]+?)\s+Ref/i,
+
+    // Axis: "Rs.500 debited at MERCHANT UPI:"
+    /debited\s+(?:at\s+)?([A-Za-z0-9\s&\-\.]+?)\s+UPI:/i,
+    /(?:Rs\.?|INR|₹)\s*[\d,\.]+\s+(?:debited|paid)\s+(?:at\s+)?([A-Za-z0-9\s&\-\.]+?)\s+(?:UPI|Ref)/i,
+
+    // Kotak: "Rs 500 paid to JOHN DOE. Ref No"
+    /paid\s+to\s+([A-Za-z0-9\s&\-\.]+?)\.\s*(?:Ref|UPI|Txn)/i,
+    /received\s+from\s+([A-Za-z0-9\s&\-\.]+?)\.\s*(?:Ref|UPI|Txn)/i,
+
+    // BOB (Bank of Baroda): "UPI txn to MERCHANT done"
+    /UPI\s+(?:txn|transaction)\s+to\s+([A-Za-z0-9\s&\-\.]+?)\s+(?:done|successful)/i,
+    /UPI\s+(?:txn|transaction)\s+from\s+([A-Za-z0-9\s&\-\.]+?)\s+(?:done|successful)/i,
+
+    // IDFC First: "to NAME VPA: xx@bank"
+    /to\s+([A-Za-z\s]+?)\s+VPA:/i,
+    /from\s+([A-Za-z\s]+?)\s+VPA:/i,
+
+    // ============ GENERIC UPI PATTERNS ============
+
+    // VPA/UPI ID patterns (merchant@bank format)
+    /(?:VPA|UPI)\s*[:\s]+([a-z0-9._]+)@[a-z]+/i,
+    /UPI\s*[:\s]*([a-z0-9._@\-]+)/i,
+
+    // Generic "at/to/from MERCHANT" patterns
+    /(?:at|@)\s+([A-Za-z0-9\s&\-\.]+?)(?:\s+(?:on|Ref|UPI|via|using|Info)|[.\s]*$)/i,
+    /(?:paid\s*to|transferred\s*to|received\s*from|sent\s+to)\s+([A-Za-z0-9\s&\-]+?)(?:\s+(?:Ref|on|via)|[.\s]*$)/i,
     /from\s+([A-Z\s]+)\s+via\s+UPI/i,
-    /to\s+([A-Z\s]+)\s+via\s+UPI/i,  // Added for "sent to X via UPI"
+    /to\s+([A-Z\s]+)\s+via\s+UPI/i,
     /Cr\.\s*to\s+([a-z0-9._@\-]+)/i,
     /(?:spent|paid|purchase)\s*(?:at|on)?\s+([A-Za-z0-9\s&\-\.]+?)(?:\s+on|\s+using|\.$)/i,
+
+    // Fallback: Extract name before common delimiters
+    /to\s+([A-Za-z][A-Za-z\s]+?)(?:\s+on|\s+for|\s+ref|\.|,|$)/i,
+    /from\s+([A-Za-z][A-Za-z\s]+?)(?:\s+on|\s+for|\s+ref|\.|,|$)/i,
 ];
 
 // Auto-categorization keywords - ordered by specificity (high confidence first)
